@@ -25,4 +25,7 @@ help: ## Show help
 restart:
 	sudo systemctl restart xsuportal-api-golang.service
 	sudo systemctl restart xsuportal-web-golang.service
+<<<<<<< HEAD
 	sudo bash -c ":> /var/log/envoy/access.log"
+=======
+>>>>>>> 1b7ca7d... makefile
