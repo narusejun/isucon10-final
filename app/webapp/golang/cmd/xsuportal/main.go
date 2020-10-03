@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	TeamCapacity               = 40
+	TeamCapacity               = 256
 	AdminID                    = "admin"
 	AdminPassword              = "admin"
 	DebugContestStatusFilePath = "/tmp/XSUPORTAL_CONTEST_STATUS"
@@ -901,6 +901,9 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 	if !ok {
 		return wrapError("check contest status", err)
 	}
+
+	tsLock.Lock()
+	defer tsLock.Unlock()
 
 	ctx := context.Background()
 	conn, err := db.Connx(ctx)
