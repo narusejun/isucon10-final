@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	xsuportal "github.com/isucon/isucon10-final/webapp/golang"
+	"github.com/isucon/isucon10-final/webapp/golang/embed"
 	xsuportalpb "github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal"
 	resourcespb "github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal/resources"
 	adminpb "github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal/services/admin"
@@ -51,8 +52,9 @@ var notifier xsuportal.Notifier
 func main() {
 	srv := echo.New()
 
-	// embed.EnableLogging(srv)
-	// embed.EmbedDebugServer(":40001")
+	embed.EnableLogging(srv)
+	embed.EnableLogTransport(srv)
+	embed.EnablePProf(srv)
 
 	srv.Server.Addr = fmt.Sprintf(":%v", util.GetEnv("PORT", "9292"))
 	srv.HideBanner = true
