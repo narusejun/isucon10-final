@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/SherClockHolmes/webpush-go v1.1.2
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
+	github.com/go-redis/redis/v8 v8.2.3 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/protobuf v1.4.2
 	github.com/gorilla/sessions v1.2.1

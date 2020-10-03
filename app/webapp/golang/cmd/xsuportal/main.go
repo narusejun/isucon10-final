@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/sessions"
@@ -47,6 +48,7 @@ const (
 )
 
 var db *sqlx.DB
+var rdb *redis.Client
 var notifier xsuportal.Notifier
 
 func main() {
@@ -69,6 +71,12 @@ func main() {
 
 	db, _ = xsuportal.GetDB()
 	db.SetMaxOpenConns(10)
+
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     "127.0.0.1:6379",
+		Password: "",
+		DB:       0,
+	})
 
 	srv.Use(middleware.Recover())
 	srv.Use(session.Middleware(sessions.NewCookieStore([]byte("tagomoris"))))
@@ -463,6 +471,12 @@ func (*ContestantService) EnqueueBenchmarkJob(e echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
+
+	// ENQUEUE
+	if err := rdb.LPush(e.Request().Context(), "benchmark_jobs", job.ID).Err(); err != nil {
+		return fmt.Errorf("rdb.LPush: %w", err)
+	}
+
 	j := makeBenchmarkJobPB(&job)
 	return writeProto(e, http.StatusOK, &contestantpb.EnqueueBenchmarkJobResponse{
 		Job: j,
