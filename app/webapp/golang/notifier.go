@@ -1,6 +1,7 @@
 package xsuportal
 
 import (
+	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
 	"encoding/base64"
@@ -21,6 +22,31 @@ const (
 	WebpushVAPIDPrivateKeyPath = "../vapid_private.pem"
 	WebpushSubject             = "xsuportal@example.com"
 )
+
+var priv *ecdsa.PrivateKey
+
+func init() {
+	var err error
+	priv, err = GetVAPIDKey(WebpushVAPIDPrivateKeyPath)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func webPush(db sqlx.Ext, notificationPB *resources.Notification, notification *Notification) error {
+	subs, err := GetPushSubscriptions(db, notification.ContestantID)
+	if err != nil {
+		return fmt.Errorf("GetPushSubscriptions: %w", err)
+	}
+
+	for _, sub := range subs {
+		if err := SendWebPush(priv, notificationPB, &sub); err != nil {
+			return fmt.Errorf("SendWebPush: %w", err)
+		}
+	}
+
+	return nil
+}
 
 type Notifier struct {
 	mu      sync.Mutex
@@ -99,6 +125,9 @@ func (n *Notifier) NotifyClarificationAnswered(db sqlx.Ext, c *Clarification, up
 			notificationPB.Id = notification.ID
 			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
 			// TODO: Web Push IIKANJI NI SHITE
+			if err := webPush(db, notificationPB, notification); err != nil {
+				return fmt.Errorf("webPush: %w", err)
+			}
 		}
 	}
 	return nil
@@ -134,6 +163,9 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 			notificationPB.Id = notification.ID
 			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
 			// TODO: Web Push IIKANJI NI SHITE
+			if err := webPush(db, notificationPB, notification); err != nil {
+				return fmt.Errorf("webPush: %w", err)
+			}
 		}
 	}
 	return nil
@@ -166,5 +198,3 @@ func (n *Notifier) notify(db sqlx.Ext, notificationPB *resources.Notification, c
 	}
 	return &notification, nil
 }
-
-

@@ -691,9 +691,9 @@ func (*ContestantService) SubscribeNotification(e echo.Context) error {
 		return wrapError("check session", err)
 	}
 
-	if notifier.VAPIDKey() == nil {
-		return halt(e, http.StatusServiceUnavailable, "WebPush は未対応です", nil)
-	}
+	// if notifier.VAPIDKey() == nil {
+	// 	return halt(e, http.StatusServiceUnavailable, "WebPush は未対応です", nil)
+	// }
 
 	var req contestantpb.SubscribeNotificationRequest
 	if err := e.Bind(&req); err != nil {
@@ -719,9 +719,9 @@ func (*ContestantService) UnsubscribeNotification(e echo.Context) error {
 		return wrapError("check session", err)
 	}
 
-	if notifier.VAPIDKey() == nil {
-		return halt(e, http.StatusServiceUnavailable, "WebPush は未対応です", nil)
-	}
+	// if notifier.VAPIDKey() == nil {
+	// 	return halt(e, http.StatusServiceUnavailable, "WebPush は未対応です", nil)
+	// }
 
 	var req contestantpb.UnsubscribeNotificationRequest
 	if err := e.Bind(&req); err != nil {
