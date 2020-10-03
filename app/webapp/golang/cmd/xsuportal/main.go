@@ -1214,7 +1214,7 @@ func (*AudienceService) ListTeams(e echo.Context) error {
 var leaderboardCache = sync.Map{}
 
 func leaderboardCacheBuilder() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
