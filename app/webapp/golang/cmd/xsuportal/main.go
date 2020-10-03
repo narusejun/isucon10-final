@@ -163,6 +163,7 @@ func (*AdminService) Initialize(e echo.Context) error {
 		"TRUNCATE `teams`",
 		"TRUNCATE `contestants`",
 		"TRUNCATE `benchmark_jobs`",
+		"TRUNCATE `best_scores`",
 		"TRUNCATE `clarifications`",
 		"TRUNCATE `notifications`",
 		"TRUNCATE `push_subscriptions`",
@@ -1582,7 +1583,6 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 			"ORDER BY\n" +
 			"  `latest_score` DESC,\n" +
 			"  `latest_score_marked_at` ASC\n"
-
 		err = tx.Select(&leaderboard, query, teamID, teamID, contestFinished, contestFreezesAt, teamID, teamID, contestFinished, contestFreezesAt)
 	} else {
 		query := `
