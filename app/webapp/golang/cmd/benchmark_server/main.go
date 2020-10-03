@@ -210,6 +210,7 @@ func (b *benchmarkReportService) saveAsFinished(db sqlx.Execer, job *xsuportal.B
 		deduction.Valid = true
 		deduction.Int32 = int32(result.ScoreBreakdown.Deduction)
 	}
+
 	_, err := db.Exec(
 		"UPDATE `benchmark_jobs` SET `status` = ?, `score_raw` = ?, `score_deduction` = ?, `passed` = ?, `reason` = ?, `updated_at` = NOW(6), `finished_at` = ? WHERE `id` = ? LIMIT 1",
 		resources.BenchmarkJob_FINISHED,
@@ -223,6 +224,20 @@ func (b *benchmarkReportService) saveAsFinished(db sqlx.Execer, job *xsuportal.B
 	if err != nil {
 		return fmt.Errorf("update benchmark job status: %w", err)
 	}
+
+	_, err = db.Exec(
+		"UPDATE `best_scores` SET `benchmark_id` = ?, `score` = ?, `started_at` = ?, `finished_at` = ? WHERE `team_id` = ? AND `score` <= ?",
+		req.JobId,
+		raw.Int32-deduction.Int32,
+		job.StartedAt,
+		markedAt,
+		job.TeamID,
+		raw.Int32-deduction.Int32,
+	)
+	if err != nil {
+		return fmt.Errorf("update benchmark job status: %w", err)
+	}
+
 	return nil
 }
 
