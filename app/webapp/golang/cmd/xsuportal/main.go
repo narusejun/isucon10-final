@@ -310,6 +310,7 @@ func (*AdminService) GetClarification(e echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("get team: %w", err)
 	}
+	team.Student = sql.NullBool{}
 	c, err := makeClarificationPB(db, &clarification, &team)
 	if err != nil {
 		return fmt.Errorf("make clarification: %w", err)
@@ -1677,7 +1678,7 @@ SELECT teams.id                                                          AS id,
        teams.name                                                        AS name,
        teams.leader_id                                                   AS leader_id,
        teams.withdrawn                                                   AS withdrawn,
-       teams.student                                                     AS student,
+       team_student_flags.student                                        AS student,
        bs.score                                                          AS best_score,
        bs.started_at                                                     AS best_score_started_at,
        bs.finished_at                                                    AS best_score_marked_at,
