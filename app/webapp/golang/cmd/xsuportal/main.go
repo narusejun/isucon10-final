@@ -824,8 +824,6 @@ func (*RegistrationService) GetRegistrationSession(e echo.Context) error {
 
 	var members []xsuportal.Contestant
 	if team != nil {
-		team.Student = sql.NullBool{}
-
 		err := db.Select(
 			&members,
 			"SELECT * FROM `contestants` WHERE `team_id` = ?",
@@ -1267,6 +1265,7 @@ func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team
 	if err != nil {
 		return nil, fmt.Errorf("query team: %w", err)
 	}
+	team.Student = sql.NullBool{}
 	xc.Team = &team
 	return xc.Team, nil
 }
