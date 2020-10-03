@@ -159,6 +159,10 @@ func (*AdminService) Initialize(e echo.Context) error {
 		return err
 	}
 
+	if err := rdb.FlushAll(e.Request().Context()).Err(); err != nil {
+		return err
+	}
+
 	queries := []string{
 		"TRUNCATE `teams`",
 		"TRUNCATE `contestants`",
