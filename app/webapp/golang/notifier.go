@@ -124,10 +124,11 @@ func (n *Notifier) NotifyClarificationAnswered(db sqlx.Ext, c *Clarification, up
 		if n.VAPIDKey() != nil {
 			notificationPB.Id = notification.ID
 			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
-			// TODO: Web Push IIKANJI NI SHITE
-			if err := webPush(db, notificationPB, notification); err != nil {
-				return fmt.Errorf("webPush: %w", err)
-			}
+			go func() {
+				if err := webPush(db, notificationPB, notification); err != nil {
+					return fmt.Printf("webPush: %v", err)
+				}
+			}()
 		}
 	}
 	return nil
@@ -162,10 +163,11 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 		if n.VAPIDKey() != nil {
 			notificationPB.Id = notification.ID
 			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
-			// TODO: Web Push IIKANJI NI SHITE
-			if err := webPush(db, notificationPB, notification); err != nil {
-				return fmt.Errorf("webPush: %w", err)
-			}
+			go func() {
+				if err := webPush(db, notificationPB, notification); err != nil {
+					return fmt.Printf("webPush: %v", err)
+				}
+			}()
 		}
 	}
 	return nil
