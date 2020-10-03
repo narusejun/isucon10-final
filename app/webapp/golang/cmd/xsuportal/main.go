@@ -219,6 +219,10 @@ func (*AdminService) ListClarifications(e echo.Context) error {
 	}
 	res := &adminpb.ListClarificationsResponse{}
 
+	if len(clarifications) == 0 {
+		return writeProto(e, http.StatusOK, res)
+	}
+
 	teamIds := map[int64]struct{}{}
 	teamIdsTmp := make([]int64, 0)
 	for _, clarification := range clarifications {
