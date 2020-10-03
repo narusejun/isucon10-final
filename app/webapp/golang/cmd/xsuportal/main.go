@@ -717,6 +717,22 @@ func (*ContestantService) UnsubscribeNotification(e echo.Context) error {
 	return writeProto(e, http.StatusOK, &contestantpb.UnsubscribeNotificationResponse{})
 }
 
+func setCookie(e echo.Context, contestantId string) {
+	cookie := new(http.Cookie)
+	cookie.Name = "contestant_id"
+	cookie.Value = contestantId
+	cookie.Expires = time.Now().Add(3600 * time.Second)
+	e.SetCookie(cookie)
+}
+
+func getCookie(e echo.Context) string {
+	cookie, err := e.Cookie("contestant_id")
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
+}
+
 func (*ContestantService) Signup(e echo.Context) error {
 	var req contestantpb.SignupRequest
 	if err := e.Bind(&req); err != nil {
@@ -735,18 +751,7 @@ func (*ContestantService) Signup(e echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("insert contestant: %w", err)
 	}
-	sess, err := session.Get(SessionName, e)
-	if err != nil {
-		return fmt.Errorf("get session: %w", err)
-	}
-	sess.Options = &sessions.Options{
-		Path:   "/",
-		MaxAge: 3600,
-	}
-	sess.Values["contestant_id"] = req.ContestantId
-	if err := sess.Save(e.Request(), e.Response()); err != nil {
-		return fmt.Errorf("save session: %w", err)
-	}
+	setCookie(e, req.ContestantId)
 	return writeProto(e, http.StatusOK, &contestantpb.SignupResponse{})
 }
 
@@ -767,18 +772,7 @@ func (*ContestantService) Login(e echo.Context) error {
 	passwordHash := sha256.Sum256([]byte(req.Password))
 	digest := hex.EncodeToString(passwordHash[:])
 	if err != sql.ErrNoRows && subtle.ConstantTimeCompare([]byte(digest), []byte(password)) == 1 {
-		sess, err := session.Get(SessionName, e)
-		if err != nil {
-			return fmt.Errorf("get session: %w", err)
-		}
-		sess.Options = &sessions.Options{
-			Path:   "/",
-			MaxAge: 3600,
-		}
-		sess.Values["contestant_id"] = req.ContestantId
-		if err := sess.Save(e.Request(), e.Response()); err != nil {
-			return fmt.Errorf("save session: %w", err)
-		}
+		setCookie(e, req.ContestantId)
 	} else {
 		return halt(e, http.StatusBadRequest, "ログインIDまたはパスワードが正しくありません", nil)
 	}
@@ -786,19 +780,8 @@ func (*ContestantService) Login(e echo.Context) error {
 }
 
 func (*ContestantService) Logout(e echo.Context) error {
-	sess, err := session.Get(SessionName, e)
-	if err != nil {
-		return fmt.Errorf("get session: %w", err)
-	}
-	if _, ok := sess.Values["contestant_id"]; ok {
-		delete(sess.Values, "contestant_id")
-		sess.Options = &sessions.Options{
-			Path:   "/",
-			MaxAge: -1,
-		}
-		if err := sess.Save(e.Request(), e.Response()); err != nil {
-			return fmt.Errorf("delete session: %w", err)
-		}
+	if id := getCookie(e); id != "" {
+		setCookie(e, "")
 	} else {
 		return halt(e, http.StatusUnauthorized, "ログインしていません", nil)
 	}
@@ -1201,12 +1184,8 @@ func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuporta
 	if xc.Contestant != nil {
 		return xc.Contestant, nil
 	}
-	sess, err := session.Get(SessionName, e)
-	if err != nil {
-		return nil, fmt.Errorf("get session: %w", err)
-	}
-	contestantID, ok := sess.Values["contestant_id"]
-	if !ok {
+	contestantID := getCookie(e)
+	if contestantID == "" {
 		return nil, nil
 	}
 	var contestant xsuportal.Contestant
@@ -1214,7 +1193,7 @@ func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuporta
 	if lock {
 		query += " FOR UPDATE"
 	}
-	err = sqlx.Get(db, &contestant, query, contestantID)
+	err := sqlx.Get(db, &contestant, query, contestantID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
