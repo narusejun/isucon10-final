@@ -202,6 +202,7 @@ func (*AdminService) Initialize(e echo.Context) error {
 		},
 	}
 	currentContestantCache = sync.Map{}
+	contestStatus = nil
 
 	return writeProto(e, http.StatusOK, res)
 }
@@ -1253,32 +1254,36 @@ func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team
 	return xc.Team, nil
 }
 
+var contestStatus *xsuportal.ContestStatus
+
 func getCurrentContestStatus(db sqlx.Queryer) (*xsuportal.ContestStatus, error) {
-	var contestStatus xsuportal.ContestStatus
-	err := sqlx.Get(db, &contestStatus, "SELECT *, NOW(6) AS `current_time`, CASE WHEN NOW(6) < `registration_open_at` THEN 'standby' WHEN `registration_open_at` <= NOW(6) AND NOW(6) < `contest_starts_at` THEN 'registration' WHEN `contest_starts_at` <= NOW(6) AND NOW(6) < `contest_ends_at` THEN 'started' WHEN `contest_ends_at` <= NOW(6) THEN 'finished' ELSE 'unknown' END AS `status`, IF(`contest_starts_at` <= NOW(6) AND NOW(6) < `contest_freezes_at`, 1, 0) AS `frozen` FROM `contest_config`")
-	if err != nil {
-		return nil, fmt.Errorf("query contest status: %w", err)
+	if contestStatus != nil {
+	} else {
+		err := sqlx.Get(db, contestStatus, "SELECT *, NOW(6) AS `current_time`, CASE WHEN NOW(6) < `registration_open_at` THEN 'standby' WHEN `registration_open_at` <= NOW(6) AND NOW(6) < `contest_starts_at` THEN 'registration' WHEN `contest_starts_at` <= NOW(6) AND NOW(6) < `contest_ends_at` THEN 'started' WHEN `contest_ends_at` <= NOW(6) THEN 'finished' ELSE 'unknown' END AS `status`, IF(`contest_starts_at` <= NOW(6) AND NOW(6) < `contest_freezes_at`, 1, 0) AS `frozen` FROM `contest_config`")
+		if err != nil {
+			return nil, fmt.Errorf("query contest status: %w", err)
+		}
+		statusStr := contestStatus.StatusStr
+		// if e.Echo().Debug {
+		// b, err := ioutil.ReadFile(DebugContestStatusFilePath)
+		// if err == nil {
+		// 	statusStr = string(b)
+		// }
+		// }
+		switch statusStr {
+		case "standby":
+			contestStatus.Status = resourcespb.Contest_STANDBY
+		case "registration":
+			contestStatus.Status = resourcespb.Contest_REGISTRATION
+		case "started":
+			contestStatus.Status = resourcespb.Contest_STARTED
+		case "finished":
+			contestStatus.Status = resourcespb.Contest_FINISHED
+		default:
+			return nil, fmt.Errorf("unexpected contest status: %q", contestStatus.StatusStr)
+		}
 	}
-	statusStr := contestStatus.StatusStr
-	// if e.Echo().Debug {
-	b, err := ioutil.ReadFile(DebugContestStatusFilePath)
-	if err == nil {
-		statusStr = string(b)
-	}
-	// }
-	switch statusStr {
-	case "standby":
-		contestStatus.Status = resourcespb.Contest_STANDBY
-	case "registration":
-		contestStatus.Status = resourcespb.Contest_REGISTRATION
-	case "started":
-		contestStatus.Status = resourcespb.Contest_STARTED
-	case "finished":
-		contestStatus.Status = resourcespb.Contest_FINISHED
-	default:
-		return nil, fmt.Errorf("unexpected contest status: %q", contestStatus.StatusStr)
-	}
-	return &contestStatus, nil
+	return contestStatus, nil
 }
 
 type loginRequiredOption struct {
