@@ -1003,6 +1003,7 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 	}
 	tsLock.Unlock()
 
+	time.Sleep(1 * time.Second)
 	return writeProto(e, http.StatusOK, &registrationpb.CreateTeamResponse{
 		TeamId: teamID,
 	})
@@ -1087,6 +1088,8 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 	}
 	tsLock.Unlock()
 
+	time.Sleep(1 * time.Second)
+
 	return writeProto(e, http.StatusOK, &registrationpb.JoinTeamResponse{})
 }
 
@@ -1169,6 +1172,7 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 		return fmt.Errorf("commit tx: %w", err)
 	}
 	tsLock.Unlock()
+	time.Sleep(1 * time.Second)
 	return writeProto(e, http.StatusOK, &registrationpb.UpdateRegistrationResponse{})
 }
 
@@ -1227,6 +1231,7 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 		return fmt.Errorf("commit tx: %w", err)
 	}
 	tsLock.Unlock()
+	time.Sleep(1 * time.Second)
 	return writeProto(e, http.StatusOK, &registrationpb.DeleteRegistrationResponse{})
 }
 
