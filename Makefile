@@ -6,8 +6,8 @@ BIN_PATH:=/home/isucon/isuumo/webapp/go/isuumo # TODO
 SERVICE_NAME:=isuumo.go # TODO
 APP_LOCAL_URL:=http://localhost:1323 # TODO
 
-NGX_SERVICE=nginx # TODO
-NGX_LOG:=/var/log/nginx/access.log # TODO
+NGX_SERVICE=envoy # TODO
+NGX_LOG:=/var/log/envoy/access.log # TODO
 
 MYSQL_SERVICE=mysql
 MYSQL_LOG:=/var/log/mysql/mysql.log
@@ -67,7 +67,7 @@ kataru:
 before:
 	$(eval when := $(shell date "+%s"))
 	mkdir -p ~/logs/$(when)
-	# sudo touch $(NGX_LOG)
+	sudo touch $(NGX_LOG)
 	sudo touch $(MYSQL_LOG)
-	# sudo mv -f $(NGX_LOG) ~/logs/$(when)/
+	sudo mv -f $(NGX_LOG) ~/logs/$(when)/
 	sudo mv -f $(MYSQL_LOG) ~/logs/$(when)/
