@@ -23,7 +23,7 @@ func EmbedDebugServer(addr string) {
 func EnableLogTransport(e *echo.Echo) {
 	g := e.Group("/debug/log")
 	g.Any("/app", transport.NewTailHandler("./app.log").Handle)
-	g.Any("/envoy", transport.NewTailHandler("/var/log/envoyß/access.log").Handle)
+	g.Any("/envoy", transport.NewTailHandler("/var/log/envoy/access.log").Handle)
 }
 
 func EnablePProf(e *echo.Echo) {
