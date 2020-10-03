@@ -1285,7 +1285,7 @@ func getCurrentContestStatus(db sqlx.Queryer) (*xsuportal.ContestStatus, error) 
 			return nil, fmt.Errorf("unexpected contest status: %q", contestStatus.StatusStr)
 		}
 	}
-	return contestStatus, nil
+	return &contestStatus, nil
 }
 
 type loginRequiredOption struct {
