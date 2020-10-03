@@ -197,6 +197,13 @@ func (*AdminService) Initialize(e echo.Context) error {
 			Port: int64(port),
 		},
 	}
+
+	leaderboard, err := makeLeaderboardPB(0)
+	if err != nil {
+		fmt.Printf("make leaderboard: %w\n", err)
+	}
+	leaderboardCache.Store("cache", *leaderboard)
+
 	return writeProto(e, http.StatusOK, res)
 }
 
