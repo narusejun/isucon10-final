@@ -213,27 +213,48 @@ func (*AdminService) ListClarifications(e echo.Context) error {
 	if !contestant.Staff {
 		return halt(e, http.StatusForbidden, "管理者権限が必要です", nil)
 	}
+
 	var clarifications []xsuportal.Clarification
 	err := db.Select(&clarifications, "SELECT * FROM `clarifications` ORDER BY `updated_at` DESC")
 	if err != sql.ErrNoRows && err != nil {
 		return fmt.Errorf("query clarifications: %w", err)
 	}
 	res := &adminpb.ListClarificationsResponse{}
+
+	if len(clarifications) == 0 {
+		return writeProto(e, http.StatusOK, res)
+	}
+
+	teamIds := map[int64]struct{}{}
+	teamIdsTmp := make([]int64, 0)
 	for _, clarification := range clarifications {
-		var team xsuportal.Team
-		err := db.Get(
-			&team,
-			"SELECT * FROM `teams` WHERE `id` = ? LIMIT 1",
-			clarification.TeamID,
-		)
-		if err != nil {
-			return fmt.Errorf("query team(id=%v, clarification=%v): %w", clarification.TeamID, clarification.ID, err)
+		if _, ok := teamIds[clarification.TeamID]; !ok {
+			teamIds[clarification.TeamID] = struct{}{}
+			teamIdsTmp = append(teamIdsTmp, clarification.TeamID)
 		}
-		c, err := makeClarificationPB(db, &clarification, &team)
+	}
+
+	teamSql := "SELECT * FROM teams WHERE id IN (?)"
+	teamSql, params, err := sqlx.In(teamSql, teamIdsTmp)
+	if err != nil {
+		return fmt.Errorf("query team: %w", err)
+	}
+
+	var teams []*xsuportal.Team
+	var teamMap = map[int64]*resourcespb.Team{}
+	if err := db.Select(&teams, teamSql, params...); err != nil {
+		return fmt.Errorf("query team: %w", err)
+	}
+	for _, team := range teams {
+		pb, err := makeTeamPB(db, team, false, true)
 		if err != nil {
-			return fmt.Errorf("make clarification: %w", err)
+			return fmt.Errorf("make team: %w", err)
 		}
-		res.Clarifications = append(res.Clarifications, c)
+		teamMap[team.ID] = pb
+	}
+
+	for _, clarification := range clarifications {
+		res.Clarifications = append(res.Clarifications, makeClarificationPBWithTeam(&clarification, teamMap[clarification.TeamID]))
 	}
 	return writeProto(e, http.StatusOK, res)
 }
@@ -492,6 +513,7 @@ func (*ContestantService) ListClarifications(e echo.Context) error {
 		return wrapError("check session", err)
 	}
 	team, _ := getCurrentTeam(e, db, false)
+
 	var clarifications []xsuportal.Clarification
 	err := db.Select(
 		&clarifications,
@@ -501,23 +523,20 @@ func (*ContestantService) ListClarifications(e echo.Context) error {
 	if err != sql.ErrNoRows && err != nil {
 		return fmt.Errorf("select clarifications: %w", err)
 	}
+
 	res := &contestantpb.ListClarificationsResponse{}
-	for _, clarification := range clarifications {
-		var team xsuportal.Team
-		err := db.Get(
-			&team,
-			"SELECT * FROM `teams` WHERE `id` = ? LIMIT 1",
-			clarification.TeamID,
-		)
-		if err != nil {
-			return fmt.Errorf("get team(id=%v): %w", clarification.TeamID, err)
-		}
-		c, err := makeClarificationPB(db, &clarification, &team)
-		if err != nil {
-			return fmt.Errorf("make clarification: %w", err)
-		}
-		res.Clarifications = append(res.Clarifications, c)
+	if len(clarifications) == 0 {
+		return writeProto(e, http.StatusOK, res)
 	}
+
+	teamPB, err := makeTeamPB(db, team, false, true)
+	if err != nil {
+		return fmt.Errorf("make team: %w", err)
+	}
+	for _, clarification := range clarifications {
+		res.Clarifications = append(res.Clarifications, makeClarificationPBWithTeam(&clarification, teamPB))
+	}
+
 	return writeProto(e, http.StatusOK, res)
 }
 
@@ -1325,6 +1344,10 @@ func makeClarificationPB(db sqlx.Queryer, c *xsuportal.Clarification, t *xsuport
 	if err != nil {
 		return nil, fmt.Errorf("make team: %w", err)
 	}
+	return makeClarificationPBWithTeam(c, team), nil
+}
+
+func makeClarificationPBWithTeam(c *xsuportal.Clarification, t *resourcespb.Team) *resourcespb.Clarification {
 	pb := &resourcespb.Clarification{
 		Id:        c.ID,
 		TeamId:    c.TeamID,
@@ -1333,12 +1356,12 @@ func makeClarificationPB(db sqlx.Queryer, c *xsuportal.Clarification, t *xsuport
 		Question:  c.Question.String,
 		Answer:    c.Answer.String,
 		CreatedAt: timestamppb.New(c.CreatedAt),
-		Team:      team,
+		Team:      t,
 	}
 	if c.AnsweredAt.Valid {
 		pb.AnsweredAt = timestamppb.New(c.AnsweredAt.Time)
 	}
-	return pb, nil
+	return pb
 }
 
 func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers bool) (*resourcespb.Team, error) {
