@@ -239,6 +239,18 @@ func (b *benchmarkReportService) saveAsFinished(db sqlx.Execer, job *xsuportal.B
 		return fmt.Errorf("update benchmark job status: %w", err)
 	}
 
+	_, err = db.Exec(
+		"UPDATE `best_scores` SET `latest_benchmark_id` = ?, `latest_score` = ?, `latest_started_at` = ?, `latest_finished_at` = ?, `count` = `count` + 1 WHERE `team_id` = ?",
+		req.JobId,
+		raw.Int32-deduction.Int32,
+		job.StartedAt,
+		markedAt,
+		job.TeamID,
+	)
+	if err != nil {
+		return fmt.Errorf("update benchmark job status: %w", err)
+	}
+
 	return nil
 }
 

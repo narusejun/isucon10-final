@@ -1619,31 +1619,19 @@ SELECT teams.id                                                          AS id,
        teams.leader_id                                                   AS leader_id,
        teams.withdrawn                                                   AS withdrawn,
        teams.student                                                     AS student,
-       bs.score                                                 AS best_score,
-       bs.started_at                                            AS best_score_started_at,
-       bs.finished_at                                           AS best_score_marked_at,
-       (latest_score_jobs.score_raw - latest_score_jobs.score_deduction) AS latest_score,
-       latest_score_jobs.started_at                                      AS latest_score_started_at,
-       latest_score_jobs.finished_at                                     AS latest_score_marked_at,
-       latest_score_job_ids.finish_count                                 AS finish_count
+       bs.score                                                          AS best_score,
+       bs.started_at                                                     AS best_score_started_at,
+       bs.finished_at                                                    AS best_score_marked_at,
+       bs.latest_score AS latest_score,
+       bs.latest_started_at                                      AS latest_score_started_at,
+       bs.latest_finished_at                                     AS latest_score_marked_at,
+       bs.count                                 AS finish_count
 FROM teams
-         -- latest scores
-         LEFT JOIN (
-    SELECT MAX(id)  AS id,
-           team_id,
-           COUNT(*) AS finish_count
-    FROM benchmark_jobs
-    WHERE finished_at IS NOT NULL
-      -- score freeze
-      AND (team_id = ? OR (team_id != ? AND (? = TRUE OR finished_at < ?)))
-    GROUP BY team_id
-) latest_score_job_ids ON latest_score_job_ids.team_id = teams.id
-         LEFT JOIN benchmark_jobs latest_score_jobs ON latest_score_job_ids.id = latest_score_jobs.id
          LEFT JOIN best_scores bs ON teams.id = bs.team_id
 ORDER BY latest_score DESC,
          latest_score_marked_at ASC
 `
-		err = tx.Select(&leaderboard, query, teamID, teamID, contestFinished, contestFreezesAt, teamID, teamID, contestFinished)
+		err = tx.Select(&leaderboard, query)
 	}
 	if err != sql.ErrNoRows && err != nil {
 		return nil, fmt.Errorf("select leaderboard: %w", err)

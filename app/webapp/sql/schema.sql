@@ -29,6 +29,11 @@ CREATE TABLE `best_scores` (
   `score` INT,
   `started_at` DATETIME(6),
   `finished_at` DATETIME(6),
+  `latest_benchmark_id` BIGINT,
+  `latest_score` INT,
+  `latest_started_at` DATETIME(6),
+  `latest_finished_at` DATETIME(6),
+  `count` INT,
   UNIQUE KEY (`team_id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4;
 

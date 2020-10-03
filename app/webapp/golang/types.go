@@ -119,9 +119,14 @@ func (t *LeaderBoardTeam) Team() *Team {
 }
 
 type BestScore struct {
-	TeamID      int64         `db:"id"`
-	BenchmarkID sql.NullInt32 `db:"benchmark_id"`
-	Score       sql.NullInt32 `db:"score"`
-	StartedAt   sql.NullTime  `db:"started_at"`
-	FinishedAt  sql.NullTime  `db:"finished_at"`
+	TeamID            int64         `db:"id"`
+	BenchmarkID       sql.NullInt32 `db:"benchmark_id"`
+	Score             sql.NullInt32 `db:"score"`
+	StartedAt         sql.NullTime  `db:"started_at"`
+	FinishedAt        sql.NullTime  `db:"finished_at"`
+	LatestBenchmarkID sql.NullInt32 `db:"latest_benchmark_id"`
+	LatestScore       sql.NullInt32 `db:"latest_score"`
+	LatestStartedAt   sql.NullTime  `db:"latest_started_at"`
+	LatestFinishedAt  sql.NullTime  `db:"latest_finished_at"`
+	BenchCount        sql.NullInt32 `db:"count"`
 }
