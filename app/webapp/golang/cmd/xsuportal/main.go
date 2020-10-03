@@ -1562,9 +1562,7 @@ func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers b
 				student = false
 			}
 		}
-		if t.Student.Valid {
-			t.Student.Bool = student
-		}
+		t.Student.Bool = student
 	}
 	if t.Student.Valid {
 		pb.Student = &resourcespb.Team_StudentStatus{
