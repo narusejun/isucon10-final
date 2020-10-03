@@ -18,6 +18,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/sessions"
+	"github.com/isucon/isucon10-final/webapp/golang/embed"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -49,7 +50,10 @@ var notifier xsuportal.Notifier
 
 func main() {
 	srv := echo.New()
-	srv.Debug = util.GetEnv("DEBUG", "") != ""
+
+	embed.EnableLogging(srv)
+	embed.EmbedDebugServer(":40001")
+
 	srv.Server.Addr = fmt.Sprintf(":%v", util.GetEnv("PORT", "9292"))
 	srv.HideBanner = true
 
@@ -64,7 +68,6 @@ func main() {
 	db, _ = xsuportal.GetDB()
 	db.SetMaxOpenConns(10)
 
-	srv.Use(middleware.Logger())
 	srv.Use(middleware.Recover())
 	srv.Use(session.Middleware(sessions.NewCookieStore([]byte("tagomoris"))))
 

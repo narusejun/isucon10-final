@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	xsuportal "github.com/isucon/isucon10-final/webapp/golang"
+	"github.com/isucon/isucon10-final/webapp/golang/embed"
 	"github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal/resources"
 	"github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal/services/bench"
 	"github.com/isucon/isucon10-final/webapp/golang/util"
@@ -269,6 +270,8 @@ func pollBenchmarkJob(db sqlx.Queryer) (*xsuportal.BenchmarkJob, error) {
 }
 
 func main() {
+	embed.EmbedDebugServer(":40002")
+
 	port := util.GetEnv("PORT", "50051")
 	address := ":" + port
 
