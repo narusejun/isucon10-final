@@ -201,6 +201,7 @@ func (*AdminService) Initialize(e echo.Context) error {
 			Port: int64(port),
 		},
 	}
+	currentContestantCache = sync.Map{}
 
 	return writeProto(e, http.StatusOK, res)
 }
