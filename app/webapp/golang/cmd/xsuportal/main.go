@@ -906,19 +906,17 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		return wrapError("check contest status", err)
 	}
 
-	tsLock.Lock()
-
 	ctx := context.Background()
 	conn, err := db.Connx(ctx)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("get conn: %w", err)
 	}
 	defer conn.Close()
 
 	_, err = conn.ExecContext(ctx, "LOCK TABLES `teams` WRITE, `contestants` WRITE, `best_scores` WRITE")
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("lock tables: %w", err)
 	}
 	defer conn.ExecContext(ctx, "UNLOCK TABLES")
@@ -926,7 +924,7 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 	randomBytes := make([]byte, 64)
 	_, err = rand.Read(randomBytes)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("read random: %w", err)
 	}
 	inviteToken := base64.URLEncoding.EncodeToString(randomBytes)
@@ -937,11 +935,11 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		TeamCapacity,
 	).Scan(&withinCapacity)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("check capacity: %w", err)
 	}
 	if !withinCapacity {
-		tsLock.Unlock()
+
 		return halt(e, http.StatusForbidden, "チーム登録数上限です", nil)
 	}
 	_, err = conn.ExecContext(
@@ -952,7 +950,7 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		inviteToken,
 	)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("insert team: %w", err)
 	}
 	var teamID int64
@@ -961,7 +959,7 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		"SELECT LAST_INSERT_ID() AS `id`",
 	).Scan(&teamID)
 	if err != nil || teamID == 0 {
-		tsLock.Unlock()
+
 		return halt(e, http.StatusInternalServerError, "チームを登録できませんでした", nil)
 	}
 
@@ -976,7 +974,7 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		contestant.ID,
 	)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("update contestant: %w", err)
 	}
 
@@ -988,7 +986,7 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		teamID,
 	)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("update team: %w", err)
 	}
 
@@ -998,17 +996,14 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		teamID,
 	)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("insert best_score: %w", err)
 	}
-	tsLock.Unlock()
 
 	return writeProto(e, http.StatusOK, &registrationpb.CreateTeamResponse{
 		TeamId: teamID,
 	})
 }
-
-var tsLock = sync.Mutex{}
 
 func (*RegistrationService) JoinTeam(e echo.Context) error {
 	var req registrationpb.JoinTeamRequest
@@ -1016,21 +1011,19 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 		return err
 	}
 
-	tsLock.Lock()
-
 	tx, err := db.Beginx()
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
 	if ok, err := loginRequired(e, tx, &loginRequiredOption{Lock: true}); !ok {
-		tsLock.Unlock()
+
 		return wrapError("check session", err)
 	}
 	if ok, err := contestStatusRestricted(e, tx, resourcespb.Contest_REGISTRATION, "チーム登録期間ではありません"); !ok {
-		tsLock.Unlock()
+
 		return wrapError("check contest status", err)
 	}
 	var team xsuportal.Team
@@ -1041,11 +1034,11 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 		req.InviteToken,
 	)
 	if err == sql.ErrNoRows {
-		tsLock.Unlock()
+
 		return halt(e, http.StatusBadRequest, "招待URLが不正です", nil)
 	}
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("get team with lock: %w", err)
 	}
 	var memberCount int
@@ -1055,11 +1048,11 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 		req.TeamId,
 	)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("count team member: %w", err)
 	}
 	if memberCount >= 3 {
-		tsLock.Unlock()
+
 		return halt(e, http.StatusBadRequest, "チーム人数の上限に達しています", nil)
 	}
 
@@ -1072,20 +1065,19 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 		contestant.ID,
 	)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("update contestant: %w", err)
 	}
 
 	if err := checkAndUpdateTeamStudentStatus(tx, req.TeamId); err != nil {
-		tsLock.Unlock()
+
 		return err
 	}
 
 	if err := tx.Commit(); err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("commit tx: %w", err)
 	}
-	tsLock.Unlock()
 
 	return writeProto(e, http.StatusOK, &registrationpb.JoinTeamResponse{})
 }
@@ -1122,16 +1114,14 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 		return err
 	}
 
-	tsLock.Lock()
-
 	tx, err := db.Beginx()
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 	if ok, err := loginRequired(e, tx, &loginRequiredOption{Team: true, Lock: true}); !ok {
-		tsLock.Unlock()
+
 		return wrapError("check session", err)
 	}
 	team, _ := getCurrentTeam(e, tx, false)
@@ -1144,7 +1134,7 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 			team.ID,
 		)
 		if err != nil {
-			tsLock.Unlock()
+
 			return fmt.Errorf("update team: %w", err)
 		}
 	}
@@ -1155,38 +1145,37 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 		contestant.ID,
 	)
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("update contestant: %w", err)
 	}
 
 	if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
-		tsLock.Unlock()
+
 		return err
 	}
 
 	if err := tx.Commit(); err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("commit tx: %w", err)
 	}
-	tsLock.Unlock()
+
 	return writeProto(e, http.StatusOK, &registrationpb.UpdateRegistrationResponse{})
 }
 
 func (*RegistrationService) DeleteRegistration(e echo.Context) error {
-	tsLock.Lock()
 
 	tx, err := db.Beginx()
 	if err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 	if ok, err := loginRequired(e, tx, &loginRequiredOption{Team: true, Lock: true}); !ok {
-		tsLock.Unlock()
+
 		return wrapError("check session", err)
 	}
 	if ok, err := contestStatusRestricted(e, tx, resourcespb.Contest_REGISTRATION, "チーム登録期間外は辞退できません"); !ok {
-		tsLock.Unlock()
+
 		return wrapError("check contest status", err)
 	}
 	team, _ := getCurrentTeam(e, tx, false)
@@ -1197,7 +1186,7 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 			team.ID,
 		)
 		if err != nil {
-			tsLock.Unlock()
+
 			return fmt.Errorf("withdrawn team(id=%v): %w", team.ID, err)
 		}
 		_, err = tx.Exec(
@@ -1205,7 +1194,7 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 			team.ID,
 		)
 		if err != nil {
-			tsLock.Unlock()
+
 			return fmt.Errorf("withdrawn members(team_id=%v): %w", team.ID, err)
 		}
 	} else {
@@ -1214,19 +1203,19 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 			contestant.ID,
 		)
 		if err != nil {
-			tsLock.Unlock()
+
 			return fmt.Errorf("withdrawn contestant(id=%v): %w", contestant.ID, err)
 		}
 	}
 	if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
-		tsLock.Unlock()
+
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		tsLock.Unlock()
+
 		return fmt.Errorf("commit tx: %w", err)
 	}
-	tsLock.Unlock()
+
 	return writeProto(e, http.StatusOK, &registrationpb.DeleteRegistrationResponse{})
 }
 
