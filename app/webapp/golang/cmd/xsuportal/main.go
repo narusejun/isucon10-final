@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	TeamCapacity               = 256
+	TeamCapacity               = 128
 	AdminID                    = "admin"
 	AdminPassword              = "admin"
 	DebugContestStatusFilePath = "/tmp/XSUPORTAL_CONTEST_STATUS"
@@ -71,7 +71,7 @@ func main() {
 	}
 
 	db, _ = xsuportal.GetDB()
-	db.SetMaxOpenConns(10)
+	db.SetMaxOpenConns(100)
 
 	rdb = redis.NewClient(&redis.Options{
 		Addr:     os.Getenv("REDIS_ADDR"),
@@ -1257,7 +1257,7 @@ func (*AudienceService) ListTeams(e echo.Context) error {
 var leaderboardCache = sync.Map{}
 
 func leaderboardCacheBuilder() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
