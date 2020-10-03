@@ -1139,6 +1139,9 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 }
 
 func (*RegistrationService) DeleteRegistration(e echo.Context) error {
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -1174,6 +1177,9 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 		)
 		if err != nil {
 			return fmt.Errorf("withdrawn contestant(id=%v): %w", contestant.ID, err)
+		}
+		if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
+			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
