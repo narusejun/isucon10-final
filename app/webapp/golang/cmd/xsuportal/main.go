@@ -19,7 +19,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/sessions"
-	"github.com/isucon/isucon10-final/webapp/golang/embed"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -52,8 +51,8 @@ var notifier xsuportal.Notifier
 func main() {
 	srv := echo.New()
 
-	embed.EnableLogging(srv)
-	embed.EmbedDebugServer(":40001")
+	// embed.EnableLogging(srv)
+	// embed.EmbedDebugServer(":40001")
 
 	srv.Server.Addr = fmt.Sprintf(":%v", util.GetEnv("PORT", "9292"))
 	srv.HideBanner = true
