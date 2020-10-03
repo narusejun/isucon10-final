@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,7 +74,7 @@ func main() {
 	db.SetMaxOpenConns(10)
 
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "127.0.0.1:6379",
+		Addr:     os.Getenv("REDIS_ADDR"),
 		Password: "",
 		DB:       0,
 	})
