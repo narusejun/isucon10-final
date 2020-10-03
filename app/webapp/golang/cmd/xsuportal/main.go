@@ -998,16 +998,11 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 	})
 }
 
-var tsLock = sync.Mutex{}
-
 func (*RegistrationService) JoinTeam(e echo.Context) error {
 	var req registrationpb.JoinTeamRequest
 	if err := e.Bind(&req); err != nil {
 		return err
 	}
-
-	tsLock.Lock()
-	defer tsLock.Unlock()
 
 	tx, err := db.Beginx()
 	if err != nil {
@@ -1101,9 +1096,6 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 		return err
 	}
 
-	tsLock.Lock()
-	defer tsLock.Unlock()
-
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -1146,9 +1138,6 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 }
 
 func (*RegistrationService) DeleteRegistration(e echo.Context) error {
-	tsLock.Lock()
-	defer tsLock.Unlock()
-
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
