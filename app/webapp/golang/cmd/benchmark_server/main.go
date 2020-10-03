@@ -10,6 +10,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/jmoiron/sqlx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -24,6 +25,7 @@ import (
 )
 
 var db *sqlx.DB
+var rdb *redis.Client
 
 type benchmarkQueueService struct {
 }
@@ -38,19 +40,19 @@ func (b *benchmarkQueueService) ReceiveBenchmarkJob(ctx context.Context, req *be
 	var jobHandle *bench.ReceiveBenchmarkJobResponse_JobHandle
 	for {
 		next, err := func() (bool, error) {
-			tx, err := db.Beginx()
-			if err != nil {
-				return false, fmt.Errorf("begin tx: %w", err)
-			}
-			defer tx.Rollback()
-
-			job, err := pollBenchmarkJob(tx)
+			job, err := pollBenchmarkJob(ctx)
 			if err != nil {
 				return false, fmt.Errorf("poll benchmark job: %w", err)
 			}
 			if job == nil {
 				return false, nil
 			}
+
+			tx, err := db.Beginx()
+			if err != nil {
+				return false, fmt.Errorf("begin tx: %w", err)
+			}
+			defer tx.Rollback()
 
 			var gotLock bool
 			err = tx.Get(
@@ -246,27 +248,26 @@ func (b *benchmarkReportService) saveAsRunning(db sqlx.Execer, job *xsuportal.Be
 	return nil
 }
 
-func pollBenchmarkJob(db sqlx.Queryer) (*xsuportal.BenchmarkJob, error) {
-	for i := 0; i < 10; i++ {
-		if i >= 1 {
-			time.Sleep(50 * time.Millisecond)
+func pollBenchmarkJob(ctx context.Context) (*xsuportal.BenchmarkJob, error) {
+	val, err := rdb.BLPop(ctx, 500*time.Millisecond, "benchmark_jobs").Result()
+	if err != nil {
+		if err.Error() == "redis: nil" {
+			return nil, nil
 		}
-		var job xsuportal.BenchmarkJob
-		err := sqlx.Get(
-			db,
-			&job,
-			"SELECT * FROM `benchmark_jobs` WHERE `status` = ? ORDER BY `id` LIMIT 1",
-			resources.BenchmarkJob_PENDING,
-		)
-		if err == sql.ErrNoRows {
-			continue
-		}
-		if err != nil {
-			return nil, fmt.Errorf("get benchmark job: %w", err)
-		}
-		return &job, nil
+		return nil, fmt.Errorf("rdb.BLPop: %w", err)
 	}
-	return nil, nil
+
+	var job xsuportal.BenchmarkJob
+	err = sqlx.Get(
+		db,
+		&job,
+		"SELECT * FROM `benchmark_jobs` WHERE `id` = ?",
+		val[1],
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get benchmark job: %w", err)
+	}
+	return &job, nil
 }
 
 func main() {
@@ -283,6 +284,12 @@ func main() {
 
 	db, _ = xsuportal.GetDB()
 	db.SetMaxOpenConns(10)
+
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     "127.0.0.1:6379",
+		Password: "",
+		DB:       0,
+	})
 
 	server := grpc.NewServer()
 
