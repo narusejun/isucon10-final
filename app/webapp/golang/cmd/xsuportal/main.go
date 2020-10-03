@@ -239,20 +239,20 @@ func (*AdminService) ListClarifications(e echo.Context) error {
 	}
 
 	var teams []*xsuportal.Team
-	var teamMap = map[int64]*xsuportal.Team{}
+	var teamMap = map[int64]*resourcespb.Team{}
 	if err := db.Select(&teams, teamSql, params...); err != nil {
 		return fmt.Errorf("query team: %w", err)
 	}
 	for _, team := range teams {
-		teamMap[team.ID] = team
+		pb, err := makeTeamPB(db, team, false, true)
+		if err != nil {
+			return fmt.Errorf("make team: %w", err)
+		}
+		teamMap[team.ID] = pb
 	}
 
 	for _, clarification := range clarifications {
-		c, err := makeClarificationPB(db, &clarification, teamMap[clarification.TeamID])
-		if err != nil {
-			return fmt.Errorf("make clarification: %w", err)
-		}
-		res.Clarifications = append(res.Clarifications, c)
+		res.Clarifications = append(res.Clarifications, makeClarificationPBWithTeam(&clarification, teamMap[clarification.TeamID]))
 	}
 	return writeProto(e, http.StatusOK, res)
 }
@@ -1358,6 +1358,23 @@ func makeClarificationPB(db sqlx.Queryer, c *xsuportal.Clarification, t *xsuport
 		pb.AnsweredAt = timestamppb.New(c.AnsweredAt.Time)
 	}
 	return pb, nil
+}
+
+func makeClarificationPBWithTeam(c *xsuportal.Clarification, t *resourcespb.Team) *resourcespb.Clarification {
+	pb := &resourcespb.Clarification{
+		Id:        c.ID,
+		TeamId:    c.TeamID,
+		Answered:  c.AnsweredAt.Valid,
+		Disclosed: c.Disclosed.Bool,
+		Question:  c.Question.String,
+		Answer:    c.Answer.String,
+		CreatedAt: timestamppb.New(c.CreatedAt),
+		Team:      t,
+	}
+	if c.AnsweredAt.Valid {
+		pb.AnsweredAt = timestamppb.New(c.AnsweredAt.Time)
+	}
+	return pb
 }
 
 func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers bool) (*resourcespb.Team, error) {
