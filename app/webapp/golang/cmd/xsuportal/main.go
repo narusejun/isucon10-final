@@ -1550,6 +1550,7 @@ func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers b
 		if err := sqlx.Select(db, &members, "SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`", t.ID); err != nil {
 			return nil, fmt.Errorf("select members: %w", err)
 		}
+		student := true
 		for _, member := range members {
 			m := makeContestantPB(&member)
 			pb.Members = append(pb.Members, m)
@@ -1557,6 +1558,12 @@ func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers b
 			if t.LeaderID.Valid && m.Id == t.LeaderID.String {
 				pb.Leader = m
 			}
+			if !member.Student {
+				student = false
+			}
+		}
+		if t.Student.Valid {
+			t.Student.Bool = student
 		}
 	}
 	if t.Student.Valid {
@@ -1612,7 +1619,7 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 			"  `teams`.`name` AS `name`,\n" +
 			"  `teams`.`leader_id` AS `leader_id`,\n" +
 			"  `teams`.`withdrawn` AS `withdrawn`,\n" +
-			"  `teams`.`student` AS `student`,\n" +
+			"  `team_student_flags`.`student` AS `student`,\n" +
 			"  (`best_score_jobs`.`score_raw` - `best_score_jobs`.`score_deduction`) AS `best_score`,\n" +
 			"  `best_score_jobs`.`started_at` AS `best_score_started_at`,\n" +
 			"  `best_score_jobs`.`finished_at` AS `best_score_marked_at`,\n" +
@@ -1663,6 +1670,16 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 			"      `j`.`team_id`\n" +
 			"  ) `best_score_job_ids` ON `best_score_job_ids`.`team_id` = `teams`.`id`\n" +
 			"  LEFT JOIN `benchmark_jobs` `best_score_jobs` ON `best_score_jobs`.`id` = `best_score_job_ids`.`id`\n" +
+			"  -- check student teams\n" +
+			"  LEFT JOIN (\n" +
+			"    SELECT\n" +
+			"      `team_id`,\n" +
+			"      (SUM(`student`) = COUNT(*)) AS `student`\n" +
+			"    FROM\n" +
+			"      `contestants`\n" +
+			"    GROUP BY\n" +
+			"      `contestants`.`team_id`\n" +
+			"  ) `team_student_flags` ON `team_student_flags`.`team_id` = `teams`.`id`\n" +
 			"ORDER BY\n" +
 			"  `latest_score` DESC,\n" +
 			"  `latest_score_marked_at` ASC\n"
@@ -1683,6 +1700,12 @@ SELECT teams.id                                                          AS id,
        bs.count                                 AS finish_count
 FROM teams
          LEFT JOIN best_scores bs ON teams.id = bs.team_id
+         LEFT JOIN (
+    SELECT team_id,
+           (SUM(student) = COUNT(*)) AS student
+    FROM contestants
+    GROUP BY contestants.team_id
+) team_student_flags ON team_student_flags.team_id = teams.id
 ORDER BY latest_score DESC,
          latest_score_marked_at ASC
 `
