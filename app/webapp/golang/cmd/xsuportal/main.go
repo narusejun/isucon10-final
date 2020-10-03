@@ -211,23 +211,40 @@ func (*AdminService) ListClarifications(e echo.Context) error {
 	if !contestant.Staff {
 		return halt(e, http.StatusForbidden, "管理者権限が必要です", nil)
 	}
+
 	var clarifications []xsuportal.Clarification
 	err := db.Select(&clarifications, "SELECT * FROM `clarifications` ORDER BY `updated_at` DESC")
 	if err != sql.ErrNoRows && err != nil {
 		return fmt.Errorf("query clarifications: %w", err)
 	}
 	res := &adminpb.ListClarificationsResponse{}
+
+	teamIds := map[int64]struct{}{}
+	teamIdsTmp := make([]int64, 0)
 	for _, clarification := range clarifications {
-		var team xsuportal.Team
-		err := db.Get(
-			&team,
-			"SELECT * FROM `teams` WHERE `id` = ? LIMIT 1",
-			clarification.TeamID,
-		)
-		if err != nil {
-			return fmt.Errorf("query team(id=%v, clarification=%v): %w", clarification.TeamID, clarification.ID, err)
+		if _, ok := teamIds[clarification.TeamID]; !ok {
+			teamIds[clarification.TeamID] = struct{}{}
+			teamIdsTmp = append(teamIdsTmp, clarification.TeamID)
 		}
-		c, err := makeClarificationPB(db, &clarification, &team)
+	}
+
+	teamSql := "SELECT * FROM teams WHERE id IN (?)"
+	teamSql, params, err := sqlx.In(teamSql, teamIdsTmp)
+	if err != nil {
+		return fmt.Errorf("query team: %w", err)
+	}
+
+	var teams []*xsuportal.Team
+	var teamMap = map[int64]*xsuportal.Team{}
+	if err := db.Select(&teams, teamSql, params...); err != nil {
+		return fmt.Errorf("query team: %w", err)
+	}
+	for _, team := range teams {
+		teamMap[team.ID] = team
+	}
+
+	for _, clarification := range clarifications {
+		c, err := makeClarificationPB(db, &clarification, teamMap[clarification.TeamID])
 		if err != nil {
 			return fmt.Errorf("make clarification: %w", err)
 		}
@@ -516,6 +533,7 @@ func (*ContestantService) ListClarifications(e echo.Context) error {
 		}
 		res.Clarifications = append(res.Clarifications, c)
 	}
+
 	return writeProto(e, http.StatusOK, res)
 }
 
