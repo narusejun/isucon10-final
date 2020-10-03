@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	TeamCapacity               = 40
+	TeamCapacity               = 256
 	AdminID                    = "admin"
 	AdminPassword              = "admin"
 	DebugContestStatusFilePath = "/tmp/XSUPORTAL_CONTEST_STATUS"
@@ -906,6 +906,9 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		return wrapError("check contest status", err)
 	}
 
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	ctx := context.Background()
 	conn, err := db.Connx(ctx)
 	if err != nil {
@@ -995,11 +998,17 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 	})
 }
 
+var tsLock = sync.Mutex{}
+
 func (*RegistrationService) JoinTeam(e echo.Context) error {
 	var req registrationpb.JoinTeamRequest
 	if err := e.Bind(&req); err != nil {
 		return err
 	}
+
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -1091,6 +1100,10 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 	if err := e.Bind(&req); err != nil {
 		return err
 	}
+
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -1133,6 +1146,9 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 }
 
 func (*RegistrationService) DeleteRegistration(e echo.Context) error {
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -1169,6 +1185,9 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 		if err != nil {
 			return fmt.Errorf("withdrawn contestant(id=%v): %w", contestant.ID, err)
 		}
+	}
+	if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
@@ -1492,20 +1511,17 @@ func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers b
 		}
 	}
 	if enableMembers {
-		if t.LeaderID.Valid {
-			var leader xsuportal.Contestant
-			if err := sqlx.Get(db, &leader, "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1", t.LeaderID.String); err != nil {
-				return nil, fmt.Errorf("get leader: %w", err)
-			}
-			pb.Leader = makeContestantPB(&leader)
-		}
 		var members []xsuportal.Contestant
 		if err := sqlx.Select(db, &members, "SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`", t.ID); err != nil {
 			return nil, fmt.Errorf("select members: %w", err)
 		}
 		for _, member := range members {
-			pb.Members = append(pb.Members, makeContestantPB(&member))
+			m := makeContestantPB(&member)
+			pb.Members = append(pb.Members, m)
 			pb.MemberIds = append(pb.MemberIds, member.ID)
+			if t.LeaderID.Valid && m.Id == t.LeaderID.String {
+				pb.Leader = m
+			}
 		}
 	}
 	if t.Student.Valid {
