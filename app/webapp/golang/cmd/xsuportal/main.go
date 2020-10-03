@@ -1178,9 +1178,9 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 		if err != nil {
 			return fmt.Errorf("withdrawn contestant(id=%v): %w", contestant.ID, err)
 		}
-		if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
-			return err
-		}
+	}
+	if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
