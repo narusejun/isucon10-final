@@ -249,19 +249,16 @@ func (b *benchmarkReportService) saveAsRunning(db sqlx.Execer, job *xsuportal.Be
 }
 
 func pollBenchmarkJob(ctx context.Context) (*xsuportal.BenchmarkJob, error) {
-
-	result := rdb.BLPop(ctx, 500*time.Millisecond, "benchmark_jobs")
-	if err := result.Err(); err != nil {
+	val, err := rdb.BLPop(ctx, 500*time.Millisecond, "benchmark_jobs").Result()
+	if err != nil {
+		if err.Error() == "redis: nil" {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("rdb.BLPop: %w", err)
 	}
 
-	val := result.Val()
-	if val == nil || len(val) == 0 {
-		return nil, nil
-	}
-
 	var job xsuportal.BenchmarkJob
-	err := sqlx.Get(
+	err = sqlx.Get(
 		db,
 		&job,
 		"SELECT * FROM `benchmark_jobs` WHERE `id` = ?",
