@@ -560,7 +560,7 @@ func (*ContestantService) Dashboard(e echo.Context) error {
 		return wrapError("check session", err)
 	}
 	team, _ := getCurrentTeam(e, db, false)
-	leaderboard, err := makeLeaderboardPB(e, team.ID)
+	leaderboard, err := makeLeaderboardPB(team.ID)
 	if err != nil {
 		return fmt.Errorf("make leaderboard: %w", err)
 	}
@@ -1282,7 +1282,7 @@ func loginRequired(e echo.Context, db sqlx.Queryer, option *loginRequiredOption)
 }
 
 func contestStatusRestricted(e echo.Context, db sqlx.Queryer, status resourcespb.Contest_Status, message string) (bool, error) {
-	contestStatus, err := getCurrentContestStatus(e, db)
+	contestStatus, err := getCurrentContestStatus(db)
 	if err != nil {
 		return false, fmt.Errorf("get current contest status: %w", err)
 	}
@@ -1384,7 +1384,7 @@ func makeContestantPB(c *xsuportal.Contestant) *resourcespb.Contestant {
 }
 
 func makeContestPB(e echo.Context) (*resourcespb.Contest, error) {
-	contestStatus, err := getCurrentContestStatus(e, db)
+	contestStatus, err := getCurrentContestStatus(db)
 	if err != nil {
 		return nil, fmt.Errorf("get current contest status: %w", err)
 	}
