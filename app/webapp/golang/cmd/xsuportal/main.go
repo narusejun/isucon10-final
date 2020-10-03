@@ -906,6 +906,9 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		return wrapError("check contest status", err)
 	}
 
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	ctx := context.Background()
 	conn, err := db.Connx(ctx)
 	if err != nil {
