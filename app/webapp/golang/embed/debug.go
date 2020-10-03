@@ -17,9 +17,7 @@ func EmbedDebugServer(addr string) {
 	EnableLogging(e)
 	EnablePProf(e)
 	EnableLogTransport(e)
-	go func() {
-		e.Start(addr)
-	}()
+	go panic(e.Start(addr))
 }
 
 func EnableLogTransport(e *echo.Echo) {
