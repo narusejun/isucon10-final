@@ -1179,6 +1179,8 @@ func getXsuportalContext(e echo.Context) *XsuportalContext {
 	return xc.(*XsuportalContext)
 }
 
+var currentContestantCache = sync.Map{}
+
 func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Contestant, error) {
 	xc := getXsuportalContext(e)
 	if xc.Contestant != nil {
@@ -1192,15 +1194,33 @@ func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuporta
 	query := "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1"
 	if lock {
 		query += " FOR UPDATE"
+		err := sqlx.Get(db, &contestant, query, contestantID)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("query contestant: %w", err)
+		}
+		currentContestantCache.Delete(contestantID)
+		xc.Contestant = &contestant
+		return xc.Contestant, nil
+	} else {
+		if _contestant, ok := currentContestantCache.Load(contestantID); ok {
+			contestant := _contestant.(xsuportal.Contestant)
+			xc.Contestant = &contestant
+		} else {
+			err := sqlx.Get(db, &contestant, query, contestantID)
+			if err == sql.ErrNoRows {
+				return nil, nil
+			}
+			if err != nil {
+				return nil, fmt.Errorf("query contestant: %w", err)
+			}
+			currentContestantCache.Store(contestantID, contestant)
+			xc.Contestant = &contestant
+			return xc.Contestant, nil
+		}
 	}
-	err := sqlx.Get(db, &contestant, query, contestantID)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("query contestant: %w", err)
-	}
-	xc.Contestant = &contestant
 	return xc.Contestant, nil
 }
 
