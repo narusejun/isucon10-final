@@ -317,6 +317,10 @@ func main() {
 		Addr:     os.Getenv("REDIS_ADDR"),
 		Password: "",
 		DB:       0,
+
+		MaxRetries:   16,
+		PoolSize:     256,
+		MinIdleConns: 128,
 	})
 
 	server := grpc.NewServer()
