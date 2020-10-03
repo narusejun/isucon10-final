@@ -945,8 +945,9 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 
 	_, err = conn.ExecContext(
 		ctx,
-		"UPDATE `teams` SET `leader_id` = ? WHERE `id` = ? LIMIT 1",
+		"UPDATE `teams` SET `leader_id` = ?, `student` = ? WHERE `id` = ? LIMIT 1",
 		contestant.ID,
+		contestant.Student,
 		teamID,
 	)
 	if err != nil {
@@ -1012,10 +1013,41 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("update contestant: %w", err)
 	}
+
+	if err := checkAndUpdateTeamStudentStatus(tx, req.TeamId); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
 	return writeProto(e, http.StatusOK, &registrationpb.JoinTeamResponse{})
+}
+
+func checkAndUpdateTeamStudentStatus(tx *sqlx.Tx, teamId int64) error {
+	var teamMembers []xsuportal.Contestant
+	err := tx.Select(&teamMembers, "SELECT * FROM `contestants` WHERE `team_id` = ?", teamId)
+	if err != nil {
+		return fmt.Errorf("get all team member: %w", err)
+	}
+
+	isStudentTeam := true
+	for _, member := range teamMembers {
+		if !member.Student {
+			isStudentTeam = false
+			break
+		}
+	}
+
+	_, err = tx.Exec(
+		"UPDATE `teams` SET `student` = ? WHERE `id` = ? LIMIT 1",
+		isStudentTeam,
+		teamId,
+	)
+	if err != nil {
+		return fmt.Errorf("update team: %w", err)
+	}
+	return nil
 }
 
 func (*RegistrationService) UpdateRegistration(e echo.Context) error {
@@ -1053,6 +1085,11 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("update contestant: %w", err)
 	}
+
+	if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
@@ -1425,7 +1462,7 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 		"  `teams`.`name` AS `name`,\n" +
 		"  `teams`.`leader_id` AS `leader_id`,\n" +
 		"  `teams`.`withdrawn` AS `withdrawn`,\n" +
-		"  `team_student_flags`.`student` AS `student`,\n" +
+		"  `teams`.`student` AS `student`,\n" +
 		"  (`best_score_jobs`.`score_raw` - `best_score_jobs`.`score_deduction`) AS `best_score`,\n" +
 		"  `best_score_jobs`.`started_at` AS `best_score_started_at`,\n" +
 		"  `best_score_jobs`.`finished_at` AS `best_score_marked_at`,\n" +
@@ -1476,16 +1513,6 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 		"      `j`.`team_id`\n" +
 		"  ) `best_score_job_ids` ON `best_score_job_ids`.`team_id` = `teams`.`id`\n" +
 		"  LEFT JOIN `benchmark_jobs` `best_score_jobs` ON `best_score_jobs`.`id` = `best_score_job_ids`.`id`\n" +
-		"  -- check student teams\n" +
-		"  LEFT JOIN (\n" +
-		"    SELECT\n" +
-		"      `team_id`,\n" +
-		"      (SUM(`student`) = COUNT(*)) AS `student`\n" +
-		"    FROM\n" +
-		"      `contestants`\n" +
-		"    GROUP BY\n" +
-		"      `contestants`.`team_id`\n" +
-		"  ) `team_student_flags` ON `team_student_flags`.`team_id` = `teams`.`id`\n" +
 		"ORDER BY\n" +
 		"  `latest_score` DESC,\n" +
 		"  `latest_score_marked_at` ASC\n"
@@ -1493,6 +1520,7 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 	if err != sql.ErrNoRows && err != nil {
 		return nil, fmt.Errorf("select leaderboard: %w", err)
 	}
+
 	jobResultsQuery := "SELECT\n" +
 		"  `team_id` AS `team_id`,\n" +
 		"  (`score_raw` - `score_deduction`) AS `score`,\n" +
@@ -1517,6 +1545,7 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
+
 	teamGraphScores := make(map[int64][]*resourcespb.Leaderboard_LeaderboardItem_LeaderboardScore)
 	for _, jobResult := range jobResults {
 		teamGraphScores[jobResult.TeamID] = append(teamGraphScores[jobResult.TeamID], &resourcespb.Leaderboard_LeaderboardItem_LeaderboardScore{
@@ -1525,6 +1554,7 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 			MarkedAt:  timestamppb.New(jobResult.FinishedAt),
 		})
 	}
+
 	pb := &resourcespb.Leaderboard{}
 	for _, team := range leaderboard {
 		t, _ := makeTeamPB(db, team.Team(), false, false)
