@@ -824,6 +824,8 @@ func (*RegistrationService) GetRegistrationSession(e echo.Context) error {
 
 	var members []xsuportal.Contestant
 	if team != nil {
+		team.Student = sql.NullBool{}
+
 		err := db.Select(
 			&members,
 			"SELECT * FROM `contestants` WHERE `team_id` = ?",
