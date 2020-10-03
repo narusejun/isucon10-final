@@ -991,11 +991,17 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 	})
 }
 
+var tsLock = sync.Mutex{}
+
 func (*RegistrationService) JoinTeam(e echo.Context) error {
 	var req registrationpb.JoinTeamRequest
 	if err := e.Bind(&req); err != nil {
 		return err
 	}
+
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -1056,12 +1062,7 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 	return writeProto(e, http.StatusOK, &registrationpb.JoinTeamResponse{})
 }
 
-var tsLock = sync.Mutex{}
-
 func checkAndUpdateTeamStudentStatus(tx *sqlx.Tx, teamId int64) error {
-	tsLock.Lock()
-	defer tsLock.Unlock()
-
 	var teamMembers []xsuportal.Contestant
 	err := tx.Select(&teamMembers, "SELECT * FROM `contestants` WHERE `team_id` = ?", teamId)
 	if err != nil {
@@ -1092,6 +1093,10 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 	if err := e.Bind(&req); err != nil {
 		return err
 	}
+
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	tx, err := db.Beginx()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
