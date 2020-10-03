@@ -1166,7 +1166,7 @@ func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuporta
 		return xc.Contestant, nil
 	}
 	contestantID := getCookie(e)
-	if contestantID != "" {
+	if contestantID == "" {
 		return nil, nil
 	}
 	var contestant xsuportal.Contestant
