@@ -126,7 +126,7 @@ func (n *Notifier) NotifyClarificationAnswered(db sqlx.Ext, c *Clarification, up
 			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
 			go func() {
 				if err := webPush(db, notificationPB, notification); err != nil {
-					return fmt.Printf("webPush: %v", err)
+					fmt.Printf("webPush: %v", err)
 				}
 			}()
 		}
@@ -165,7 +165,7 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
 			go func() {
 				if err := webPush(db, notificationPB, notification); err != nil {
-					return fmt.Printf("webPush: %v", err)
+					fmt.Printf("webPush: %v", err)
 				}
 			}()
 		}
