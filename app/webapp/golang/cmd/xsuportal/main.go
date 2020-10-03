@@ -1311,7 +1311,9 @@ func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team
 	if err != nil {
 		return nil, fmt.Errorf("query team: %w", err)
 	}
+	team.Student = sql.NullBool{}
 	currentTeamCache.Store(contestant.TeamID.Int64, team)
+
 	return &team, nil
 }
 
