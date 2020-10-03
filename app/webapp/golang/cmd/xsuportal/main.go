@@ -1146,7 +1146,10 @@ func leaderboardCacheBuilder() {
 			if err != nil {
 				fmt.Printf("make leaderboard: %w\n", err)
 			}
-			leaderboardCache.Store("cache", *leaderboard)
+			res, _ := proto.Marshal(&audiencepb.DashboardResponse{
+				Leaderboard: leaderboard,
+			})
+			leaderboardCache.Store("cache", res)
 		}
 	}
 
@@ -1154,10 +1157,8 @@ func leaderboardCacheBuilder() {
 
 func (*AudienceService) Dashboard(e echo.Context) error {
 	_leaderboard, _ := leaderboardCache.Load("cache")
-	leaderboard := _leaderboard.(resourcespb.Leaderboard)
-	return writeProto(e, http.StatusOK, &audiencepb.DashboardResponse{
-		Leaderboard: &leaderboard,
-	})
+	leaderboard := _leaderboard.([]byte)
+	return e.Blob(http.StatusOK, "application/vnd.google.protobuf", leaderboard)
 }
 
 type XsuportalContext struct {
