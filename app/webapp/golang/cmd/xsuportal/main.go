@@ -1194,8 +1194,11 @@ func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuporta
 	}
 	var contestant xsuportal.Contestant
 	query := "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1"
-	if lock {
-		query += " FOR UPDATE"
+	currentContestStatus, _ := getCurrentContestStatus(db)
+	if currentContestStatus.Status == resourcespb.Contest_REGISTRATION {
+		if lock {
+			query += " FOR UPDATE"
+		}
 		err := sqlx.Get(db, &contestant, query, contestantID)
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -1203,27 +1206,26 @@ func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuporta
 		if err != nil {
 			return nil, fmt.Errorf("query contestant: %w", err)
 		}
-		currentContestantCache.Delete(contestantID)
 		xc.Contestant = &contestant
 		return xc.Contestant, nil
-	} else {
-		if _contestant, ok := currentContestantCache.Load(contestantID); ok {
-			contestant := _contestant.(xsuportal.Contestant)
-			xc.Contestant = &contestant
-		} else {
-			err := sqlx.Get(db, &contestant, query, contestantID)
-			if err == sql.ErrNoRows {
-				return nil, nil
-			}
-			if err != nil {
-				return nil, fmt.Errorf("query contestant: %w", err)
-			}
-			currentContestantCache.Store(contestantID, contestant)
-			xc.Contestant = &contestant
-			return xc.Contestant, nil
-		}
 	}
+
+	if val, ok := currentContestantCache.Load(contestantID); ok {
+		contestant = val.(xsuportal.Contestant)
+		return &contestant, nil
+	}
+
+	err := sqlx.Get(db, &contestant, query, contestantID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query contestant: %w", err)
+	}
+	currentContestantCache.Store(contestantID, contestant)
+	xc.Contestant = &contestant
 	return xc.Contestant, nil
+
 }
 
 func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team, error) {
