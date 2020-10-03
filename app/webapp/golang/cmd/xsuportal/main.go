@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,7 +74,7 @@ func main() {
 	db.SetMaxOpenConns(10)
 
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "127.0.0.1:6379",
+		Addr:     os.Getenv("REDIS_ADDR"),
 		Password: "",
 		DB:       0,
 	})
@@ -159,6 +160,10 @@ func (*AdminService) Initialize(e echo.Context) error {
 		return err
 	}
 
+	if err := rdb.FlushAll(e.Request().Context()).Err(); err != nil {
+		return err
+	}
+
 	queries := []string{
 		"TRUNCATE `teams`",
 		"TRUNCATE `contestants`",
@@ -211,6 +216,7 @@ func (*AdminService) Initialize(e echo.Context) error {
 		},
 	}
 	currentContestantCache = sync.Map{}
+	currentTeamCache = sync.Map{}
 	contestStatus = xsuportal.ContestStatus{}
 
 	return writeProto(e, http.StatusOK, res)
@@ -1289,6 +1295,8 @@ func getCurrentContestant(e echo.Context, db sqlx.Queryer, lock bool) (*xsuporta
 
 }
 
+var currentTeamCache = sync.Map{}
+
 func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team, error) {
 	xc := getXsuportalContext(e)
 	if xc.Team != nil {
@@ -1303,9 +1311,28 @@ func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team
 	}
 	var team xsuportal.Team
 	query := "SELECT * FROM `teams` WHERE `id` = ? LIMIT 1"
-	if lock {
-		query += " FOR UPDATE"
+	currentContestStatus, _ := getCurrentContestStatus(db)
+	if currentContestStatus.Status == resourcespb.Contest_REGISTRATION {
+		if lock {
+			query += " FOR UPDATE"
+		}
+		err = sqlx.Get(db, &team, query, contestant.TeamID.Int64)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("query team: %w", err)
+		}
+		team.Student = sql.NullBool{}
+		xc.Team = &team
+		return xc.Team, nil
 	}
+
+	if val, ok := currentTeamCache.Load(contestant.TeamID.Int64); ok {
+		team = val.(xsuportal.Team)
+		return &team, nil
+	}
+
 	err = sqlx.Get(db, &team, query, contestant.TeamID.Int64)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1314,8 +1341,9 @@ func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team
 		return nil, fmt.Errorf("query team: %w", err)
 	}
 	team.Student = sql.NullBool{}
-	xc.Team = &team
-	return xc.Team, nil
+	currentTeamCache.Store(contestant.TeamID.Int64, team)
+
+	return &team, nil
 }
 
 var contestStatus = xsuportal.ContestStatus{}
