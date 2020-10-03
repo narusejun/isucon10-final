@@ -1523,7 +1523,7 @@ func makeLeaderboardPB(teamID int64) (*resourcespb.Leaderboard, error) {
 	}
 	defer tx.Rollback()
 	var leaderboard []xsuportal.LeaderBoardTeam
-	if contestFreezesAt.After(time.Now()) {
+	if contestFreezesAt.Before(time.Now()) {
 		query := "SELECT\n" +
 			"  `teams`.`id` AS `id`,\n" +
 			"  `teams`.`name` AS `name`,\n" +
@@ -1611,11 +1611,11 @@ FROM teams
     GROUP BY team_id
 ) latest_score_job_ids ON latest_score_job_ids.team_id = teams.id
          LEFT JOIN benchmark_jobs latest_score_jobs ON latest_score_job_ids.id = latest_score_jobs.id
-         LEFT JOIN (SELECT * FROM best_scores WHERE team_id = ? OR (team_id != ? AND ? = TRUE)) bs ON teams.id = bs.team_id
+         LEFT JOIN (SELECT score, started_at, finished_at FROM best_scores WHERE team_id = ? OR (team_id != ? AND (? = TRUE  OR finished_at < ?))) bs ON teams.id = bs.team_id
 ORDER BY latest_score DESC,
          latest_score_marked_at ASC
 `
-		err = tx.Select(&leaderboard, query, teamID, teamID, contestFinished, contestFreezesAt, teamID, teamID, contestFinished)
+		err = tx.Select(&leaderboard, query, teamID, teamID, contestFinished, contestFreezesAt, teamID, teamID, contestFinished, contestFreezesAt)
 	}
 	if err != sql.ErrNoRows && err != nil {
 		return nil, fmt.Errorf("select leaderboard: %w", err)
