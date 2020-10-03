@@ -1056,7 +1056,12 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 	return writeProto(e, http.StatusOK, &registrationpb.JoinTeamResponse{})
 }
 
+var tsLock = sync.Mutex{}
+
 func checkAndUpdateTeamStudentStatus(tx *sqlx.Tx, teamId int64) error {
+	tsLock.Lock()
+	defer tsLock.Unlock()
+
 	var teamMembers []xsuportal.Contestant
 	err := tx.Select(&teamMembers, "SELECT * FROM `contestants` WHERE `team_id` = ?", teamId)
 	if err != nil {
@@ -1488,20 +1493,17 @@ func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers b
 		}
 	}
 	if enableMembers {
-		if t.LeaderID.Valid {
-			var leader xsuportal.Contestant
-			if err := sqlx.Get(db, &leader, "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1", t.LeaderID.String); err != nil {
-				return nil, fmt.Errorf("get leader: %w", err)
-			}
-			pb.Leader = makeContestantPB(&leader)
-		}
 		var members []xsuportal.Contestant
 		if err := sqlx.Select(db, &members, "SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`", t.ID); err != nil {
 			return nil, fmt.Errorf("select members: %w", err)
 		}
 		for _, member := range members {
-			pb.Members = append(pb.Members, makeContestantPB(&member))
+			m := makeContestantPB(&member)
+			pb.Members = append(pb.Members, m)
 			pb.MemberIds = append(pb.MemberIds, member.ID)
+			if t.LeaderID.Valid && m.Id == t.LeaderID.String {
+				pb.Leader = m
+			}
 		}
 	}
 	if t.Student.Valid {
