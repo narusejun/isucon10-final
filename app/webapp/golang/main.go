@@ -129,6 +129,7 @@ func SendWebPush(vapidKey *ecdsa.PrivateKey, notificationPB *resources.Notificat
 			Subscriber:      WebpushSubject,
 			VAPIDPublicKey:  vapidPublicKey,
 			VAPIDPrivateKey: vapidPrivateKey,
+			HTTPClient: &client,
 		},
 	)
 	if err != nil {

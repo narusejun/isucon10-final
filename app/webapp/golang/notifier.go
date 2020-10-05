@@ -14,7 +14,6 @@ import (
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/golang/protobuf/proto"
 	"github.com/jmoiron/sqlx"
-	"golang.org/x/net/http2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal/resources"
@@ -57,7 +56,10 @@ type Notifier struct {
 
 var (
 	client = http.Client{
-		Transport: &http2.Transport{},
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 100,
+			ForceAttemptHTTP2: true,
+		},
 	}
 )
 
