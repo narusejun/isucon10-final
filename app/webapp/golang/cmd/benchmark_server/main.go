@@ -170,9 +170,11 @@ func (b *benchmarkReportService) ReportBenchmarkResult(srv bench.BenchmarkReport
 					return fmt.Errorf("commit tx: %w", err)
 				}
 
-				if err := notifier.NotifyBenchmarkJobFinished(db, &job); err != nil {
-					return fmt.Errorf("notify benchmark job finished: %w", err)
-				}
+				defer func() {
+					if err := notifier.NotifyBenchmarkJobFinished(db, &job); err != nil {
+						fmt.Printf("notify benchmark job finished: %+v\n", err)
+					}
+				}()
 			} else {
 				log.Printf("[DEBUG] %v: save as running", req.JobId)
 				if err := b.saveAsRunning(tx, &job, req); err != nil {
@@ -279,7 +281,7 @@ func (b *benchmarkReportService) saveAsRunning(db sqlx.Execer, job *xsuportal.Be
 }
 
 func pollBenchmarkJob(ctx context.Context) (string, error) {
-	val, err := rdb.BLPop(ctx, 60*time.Second, "benchmark_jobs").Result()
+	val, err := rdb.BLPop(ctx, 2*time.Second, "benchmark_jobs").Result()
 	if err != nil {
 		if err.Error() == "redis: nil" {
 			return "", nil
