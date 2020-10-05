@@ -8,11 +8,13 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"sync"
 
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/golang/protobuf/proto"
 	"github.com/jmoiron/sqlx"
+	"golang.org/x/net/http2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal/resources"
@@ -53,6 +55,12 @@ type Notifier struct {
 	options *webpush.Options
 }
 
+var (
+	client = http.Client{
+		Transport: &http2.Transport{},
+	}
+)
+
 func (n *Notifier) VAPIDKey() *webpush.Options {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -77,6 +85,7 @@ func (n *Notifier) VAPIDKey() *webpush.Options {
 			Subscriber:      WebpushSubject,
 			VAPIDPrivateKey: pri,
 			VAPIDPublicKey:  pub,
+			HTTPClient: &client,
 		}
 	}
 	return n.options
