@@ -971,6 +971,21 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 		return fmt.Errorf("insert best_score: %w", err)
 	}
 
+	tx, err := conn.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("get transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	err = checkAndUpdateTeamStudentStatus(tx)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
 	return writeProto(e, http.StatusOK, &registrationpb.CreateTeamResponse{
 		TeamId: teamID,
 	})
@@ -1031,7 +1046,8 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 		return fmt.Errorf("update contestant: %w", err)
 	}
 
-	if err := checkAndUpdateTeamStudentStatus(tx, req.TeamId); err != nil {
+	err = checkAndUpdateTeamStudentStatus(tx)
+	if err != nil {
 		return err
 	}
 
@@ -1041,26 +1057,13 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 	return writeProto(e, http.StatusOK, &registrationpb.JoinTeamResponse{})
 }
 
-func checkAndUpdateTeamStudentStatus(tx *sqlx.Tx, teamId int64) error {
-	var teamMembers []xsuportal.Contestant
-	err := tx.Select(&teamMembers, "SELECT * FROM `contestants` WHERE `team_id` = ?", teamId)
+func checkAndUpdateTeamStudentStatus(tx *sqlx.Tx) error {
+	_, err := tx.Exec("UPDATE teams SET student=1 WHERE id IN (SELECT team_id FROM contestants GROUP BY team_id HAVING count(*) = count(student = 1 OR NULL))")
 	if err != nil {
-		return fmt.Errorf("get all team member: %w", err)
+		return fmt.Errorf("update team: %w", err)
 	}
 
-	isStudentTeam := true
-	for _, member := range teamMembers {
-		if !member.Student {
-			isStudentTeam = false
-			break
-		}
-	}
-
-	_, err = tx.Exec(
-		"UPDATE `teams` SET `student` = ? WHERE `id` = ? LIMIT 1",
-		isStudentTeam,
-		teamId,
-	)
+	_, err = tx.Exec("UPDATE teams SET student=0 WHERE id IN (SELECT team_id FROM contestants GROUP BY team_id HAVING count(*) != count(student = 1 OR NULL))")
 	if err != nil {
 		return fmt.Errorf("update team: %w", err)
 	}
@@ -1103,7 +1106,8 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 		return fmt.Errorf("update contestant: %w", err)
 	}
 
-	if err := checkAndUpdateTeamStudentStatus(tx, team.ID); err != nil {
+	err = checkAndUpdateTeamStudentStatus(tx)
+	if err != nil {
 		return err
 	}
 
@@ -1151,6 +1155,12 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 			return fmt.Errorf("withdrawn contestant(id=%v): %w", contestant.ID, err)
 		}
 	}
+
+	err = checkAndUpdateTeamStudentStatus(tx)
+	if err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
