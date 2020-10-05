@@ -874,6 +874,8 @@ func (*RegistrationService) GetRegistrationSession(e echo.Context) error {
 	return writeProto(e, http.StatusOK, res)
 }
 
+var regMux = sync.Mutex{}
+
 func (*RegistrationService) CreateTeam(e echo.Context) error {
 	var req registrationpb.CreateTeamRequest
 	if err := e.Bind(&req); err != nil {
@@ -977,11 +979,6 @@ func (*RegistrationService) CreateTeam(e echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	err = checkAndUpdateTeamStudentStatus(tx)
-	if err != nil {
-		return err
-	}
-
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -1042,18 +1039,15 @@ func (*RegistrationService) JoinTeam(e echo.Context) error {
 		req.IsStudent,
 		contestant.ID,
 	)
+
 	if err != nil {
 		return fmt.Errorf("update contestant: %w", err)
-	}
-
-	err = checkAndUpdateTeamStudentStatus(tx)
-	if err != nil {
-		return err
 	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
+
 	return writeProto(e, http.StatusOK, &registrationpb.JoinTeamResponse{})
 }
 
@@ -1106,11 +1100,6 @@ func (*RegistrationService) UpdateRegistration(e echo.Context) error {
 		return fmt.Errorf("update contestant: %w", err)
 	}
 
-	err = checkAndUpdateTeamStudentStatus(tx)
-	if err != nil {
-		return err
-	}
-
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tx: %w", err)
 	}
@@ -1154,11 +1143,6 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 		if err != nil {
 			return fmt.Errorf("withdrawn contestant(id=%v): %w", contestant.ID, err)
 		}
-	}
-
-	err = checkAndUpdateTeamStudentStatus(tx)
-	if err != nil {
-		return err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1343,7 +1327,8 @@ func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team
 
 var contestStatus = xsuportal.ContestStatus{}
 
-func getCurrentContestStatus(db sqlx.Queryer) (xsuportal.ContestStatus, error) {
+func getCurrentContestStatus(qdb sqlx.Queryer) (xsuportal.ContestStatus, error) {
+	lastStatus := contestStatus.Status
 	statusStr := ""
 	if contestStatus.StatusStr != "" {
 		contestStatus.CurrentTime = time.Now()
@@ -1359,7 +1344,7 @@ func getCurrentContestStatus(db sqlx.Queryer) (xsuportal.ContestStatus, error) {
 		}
 
 	} else {
-		err := sqlx.Get(db, &contestStatus, "SELECT *, NOW(6) AS `current_time`, CASE WHEN NOW(6) < `registration_open_at` THEN 'standby' WHEN `registration_open_at` <= NOW(6) AND NOW(6) < `contest_starts_at` THEN 'registration' WHEN `contest_starts_at` <= NOW(6) AND NOW(6) < `contest_ends_at` THEN 'started' WHEN `contest_ends_at` <= NOW(6) THEN 'finished' ELSE 'unknown' END AS `status`, IF(`contest_starts_at` <= NOW(6) AND NOW(6) < `contest_freezes_at`, 1, 0) AS `frozen` FROM `contest_config`")
+		err := sqlx.Get(qdb, &contestStatus, "SELECT *, NOW(6) AS `current_time`, CASE WHEN NOW(6) < `registration_open_at` THEN 'standby' WHEN `registration_open_at` <= NOW(6) AND NOW(6) < `contest_starts_at` THEN 'registration' WHEN `contest_starts_at` <= NOW(6) AND NOW(6) < `contest_ends_at` THEN 'started' WHEN `contest_ends_at` <= NOW(6) THEN 'finished' ELSE 'unknown' END AS `status`, IF(`contest_starts_at` <= NOW(6) AND NOW(6) < `contest_freezes_at`, 1, 0) AS `frozen` FROM `contest_config`")
 		if err != nil {
 			return xsuportal.ContestStatus{}, fmt.Errorf("query contest status: %w", err)
 		}
@@ -1383,6 +1368,24 @@ func getCurrentContestStatus(db sqlx.Queryer) (xsuportal.ContestStatus, error) {
 	default:
 		return xsuportal.ContestStatus{}, fmt.Errorf("unexpected contest status: %q", contestStatus.StatusStr)
 	}
+
+	if lastStatus != contestStatus.Status && contestStatus.Status == resourcespb.Contest_STARTED {
+		tx, err := db.Beginx()
+		defer tx.Rollback()
+		if err != nil {
+			return contestStatus, err
+		}
+
+		err = checkAndUpdateTeamStudentStatus(tx)
+		if err != nil {
+			return contestStatus, err
+		}
+
+		if err := tx.Commit(); err != nil {
+			return contestStatus, err
+		}
+	}
+
 	return contestStatus, nil
 }
 
