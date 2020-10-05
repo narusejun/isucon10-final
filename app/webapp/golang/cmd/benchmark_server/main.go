@@ -41,11 +41,11 @@ func (b *benchmarkQueueService) ReceiveBenchmarkJob(ctx context.Context, req *be
 	var jobHandle *bench.ReceiveBenchmarkJobResponse_JobHandle
 	for {
 		next, err := func() (bool, error) {
-			job, err := pollBenchmarkJob(ctx)
+			jobID, err := pollBenchmarkJob(ctx)
 			if err != nil {
 				return false, fmt.Errorf("poll benchmark job: %w", err)
 			}
-			if job == nil {
+			if jobID == "" {
 				return false, nil
 			}
 
@@ -55,11 +55,11 @@ func (b *benchmarkQueueService) ReceiveBenchmarkJob(ctx context.Context, req *be
 			}
 			defer tx.Rollback()
 
-			var gotLock bool
+			var job xsuportal.BenchmarkJob
 			err = tx.Get(
-				&gotLock,
-				"SELECT 1 FROM `benchmark_jobs` WHERE `id` = ? AND `status` = ? FOR UPDATE",
-				job.ID,
+				&job,
+				"SELECT * FROM `benchmark_jobs` WHERE `id` = ? AND `status` = ? FOR UPDATE",
+				jobID,
 				resources.BenchmarkJob_PENDING,
 			)
 			if err == sql.ErrNoRows {
@@ -278,26 +278,15 @@ func (b *benchmarkReportService) saveAsRunning(db sqlx.Execer, job *xsuportal.Be
 	return nil
 }
 
-func pollBenchmarkJob(ctx context.Context) (*xsuportal.BenchmarkJob, error) {
-	val, err := rdb.BLPop(ctx, 500*time.Millisecond, "benchmark_jobs").Result()
+func pollBenchmarkJob(ctx context.Context) (string, error) {
+	val, err := rdb.BLPop(ctx, 60*time.Second, "benchmark_jobs").Result()
 	if err != nil {
 		if err.Error() == "redis: nil" {
-			return nil, nil
+			return "", nil
 		}
-		return nil, fmt.Errorf("rdb.BLPop: %w", err)
+		return "", fmt.Errorf("rdb.BLPop: %w", err)
 	}
-
-	var job xsuportal.BenchmarkJob
-	err = sqlx.Get(
-		db,
-		&job,
-		"SELECT * FROM `benchmark_jobs` WHERE `id` = ?",
-		val[1],
-	)
-	if err != nil {
-		return nil, fmt.Errorf("get benchmark job: %w", err)
-	}
-	return &job, nil
+	return val[1], nil
 }
 
 func main() {
