@@ -651,23 +651,12 @@ func (*ContestantService) ListNotifications(e echo.Context) error {
 		return wrapError("check session", err)
 	}
 	var notifications []*xsuportal.Notification
-	team, _ := getCurrentTeam(e, db, false)
-	var lastAnsweredClarificationID int64
-	err := db.Get(
-		&lastAnsweredClarificationID,
-		"SELECT `id` FROM `clarifications` WHERE (`team_id` = ? OR `disclosed` = TRUE) AND `answered_at` IS NOT NULL ORDER BY `id` DESC LIMIT 1",
-		team.ID,
-	)
-	if err != sql.ErrNoRows && err != nil {
-		return fmt.Errorf("get last answered clarification: %w", err)
-	}
 	ns, err := makeNotificationsPB(notifications)
 	if err != nil {
 		return fmt.Errorf("make notifications: %w", err)
 	}
 	return writeProto(e, http.StatusOK, &contestantpb.ListNotificationsResponse{
 		Notifications:               ns,
-		LastAnsweredClarificationId: lastAnsweredClarificationID,
 	})
 }
 
