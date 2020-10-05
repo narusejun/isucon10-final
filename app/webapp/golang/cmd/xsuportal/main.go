@@ -412,13 +412,13 @@ func (*AdminService) RespondClarification(e echo.Context) error {
 		return fmt.Errorf("make clarification: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+
 	updated := wasAnswered && wasDisclosed == clarification.Disclosed
 	if err := notifier.NotifyClarificationAnswered(db, &clarification, updated); err != nil {
 		return fmt.Errorf("notify clarification answered: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
 	}
 	return writeProto(e, http.StatusOK, &adminpb.RespondClarificationResponse{
 		Clarification: c,
@@ -506,13 +506,13 @@ func (*ContestantService) EnqueueBenchmarkJob(e echo.Context) error {
 		return fmt.Errorf("get benchmark job: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+
 	// ENQUEUE
 	if err := rdb.LPush(e.Request().Context(), "benchmark_jobs", job.ID).Err(); err != nil {
 		return fmt.Errorf("rdb.LPush: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
 	}
 
 	j := makeBenchmarkJobPB(&job)
