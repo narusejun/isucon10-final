@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -138,7 +139,29 @@ func main() {
 
 	go leaderboardCacheBuilder()
 
-	srv.Logger.Error(srv.StartServer(srv.Server))
+	if util.GetEnv("WEB_USE_UNIX_SOCKET_DOMAIN", "0") == "1" {
+		// ここからソケット接続設定 ---
+		socket_file := "/var/run/web.sock"
+		os.Remove(socket_file)
+
+		l, err := net.Listen("unix", socket_file)
+		if err != nil {
+			srv.Logger.Fatal(err)
+		}
+
+		// go runユーザとnginxのユーザ（グループ）を同じにすれば777じゃなくてok
+		err = os.Chmod(socket_file, 0777)
+		if err != nil {
+			srv.Logger.Fatal(err)
+		}
+
+		srv.Listener = l
+		srv.Logger.Error(srv.Start(""))
+		// ここまで ---
+	} else {
+		srv.Logger.Error(srv.StartServer(srv.Server))
+	}
+
 }
 
 type ProtoBinder struct{}
