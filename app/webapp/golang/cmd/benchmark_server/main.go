@@ -165,11 +165,13 @@ func (b *benchmarkReportService) ReportBenchmarkResult(srv bench.BenchmarkReport
 				if err := b.saveAsFinished(tx, &job, req); err != nil {
 					return err
 				}
-				if err := tx.Commit(); err != nil {
-					return fmt.Errorf("commit tx: %w", err)
-				}
+
 				if err := notifier.NotifyBenchmarkJobFinished(db, &job); err != nil {
 					return fmt.Errorf("notify benchmark job finished: %w", err)
+				}
+
+				if err := tx.Commit(); err != nil {
+					return fmt.Errorf("commit tx: %w", err)
 				}
 			} else {
 				log.Printf("[DEBUG] %v: save as running", req.JobId)
