@@ -129,7 +129,7 @@ func (b *benchmarkReportService) Svc() *bench.BenchmarkReportService {
 }
 
 func (b *benchmarkReportService) ReportBenchmarkResult(srv bench.BenchmarkReport_ReportBenchmarkResultServer) error {
-	// var notifier xsuportal.Notifier
+	var notifier xsuportal.Notifier
 	for {
 		req, err := srv.Recv()
 		if err != nil {
@@ -170,9 +170,11 @@ func (b *benchmarkReportService) ReportBenchmarkResult(srv bench.BenchmarkReport
 					return fmt.Errorf("commit tx: %w", err)
 				}
 
-				// if err := notifier.NotifyBenchmarkJobFinished(db, &job); err != nil {
-				// 	fmt.Printf("notify benchmark job finished: %+v\n", err)
-				// }
+				defer func() {
+					if err := notifier.NotifyBenchmarkJobFinished(db, &job); err != nil {
+						fmt.Printf("notify benchmark job finished: %+v\n", err)
+					}
+				}()
 			} else {
 				log.Printf("[DEBUG] %v: save as running", req.JobId)
 				if err := b.saveAsRunning(tx, &job, req); err != nil {
