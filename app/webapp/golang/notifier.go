@@ -8,8 +8,10 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/golang/protobuf/proto"
@@ -34,8 +36,8 @@ func init() {
 	}
 }
 
-func webPush(db sqlx.Ext, notificationPB *resources.Notification, notification *Notification) error {
-	subs, err := GetPushSubscriptions(db, notification.ContestantID)
+func webPush(db sqlx.Ext, notificationPB *resources.Notification, contestantID string) error {
+	subs, err := GetPushSubscriptions(db, contestantID)
 	if err != nil {
 		return fmt.Errorf("GetPushSubscriptions: %w", err)
 	}
@@ -128,15 +130,15 @@ func (n *Notifier) NotifyClarificationAnswered(db sqlx.Ext, c *Clarification, up
 				},
 			},
 		}
-		notification, err := n.notify(db, notificationPB, contestant.ID)
-		if err != nil {
-			return fmt.Errorf("notify: %w", err)
-		}
+		// notification, err := n.notify(db, notificationPB, contestant.ID)
+		// if err != nil {
+		// 	return fmt.Errorf("notify: %w", err)
+		// }
 		if n.VAPIDKey() != nil {
-			notificationPB.Id = notification.ID
-			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
+			notificationPB.Id = rand.Int63()
+			notificationPB.CreatedAt = timestamppb.New(time.Now())
 			go func() {
-				if err := webPush(db, notificationPB, notification); err != nil {
+				if err := webPush(db, notificationPB, contestant.ID); err != nil {
 					fmt.Printf("webPush: %v", err)
 				}
 			}()
@@ -167,15 +169,15 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 				},
 			},
 		}
-		notification, err := n.notify(db, notificationPB, contestant.ID)
-		if err != nil {
-			return fmt.Errorf("notify: %w", err)
-		}
+		// notification, err := n.notify(db, notificationPB, contestant.ID)
+		// if err != nil {
+		// 	return fmt.Errorf("notify: %w", err)
+		// }
 		if n.VAPIDKey() != nil {
-			notificationPB.Id = notification.ID
-			notificationPB.CreatedAt = timestamppb.New(notification.CreatedAt)
+			notificationPB.Id = rand.Int63()
+			notificationPB.CreatedAt = timestamppb.New(time.Now())
 			go func() {
-				if err := webPush(db, notificationPB, notification); err != nil {
+				if err := webPush(db, notificationPB, contestant.ID); err != nil {
 					fmt.Printf("webPush: %v", err)
 				}
 			}()
@@ -209,5 +211,6 @@ func (n *Notifier) notify(db sqlx.Ext, notificationPB *resources.Notification, c
 	if err != nil {
 		return nil, fmt.Errorf("get inserted notification: %w", err)
 	}
+	// }
 	return &notification, nil
 }
