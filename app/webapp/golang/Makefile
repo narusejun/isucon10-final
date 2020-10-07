@@ -30,3 +30,8 @@ restart:
 	sudo systemctl restart xsuportal-api-golang.service
 	sudo systemctl restart xsuportal-web-golang.service
 	sudo bash -c ":> /var/log/envoy/access.log"
+
+.PHONY: restart-web
+restart-web:
+	sudo systemctl restart xsuportal-web-golang.service
+	sudo bash -c ":> /var/log/envoy/access.log"

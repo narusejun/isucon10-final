@@ -673,7 +673,7 @@ func (*ContestantService) ListNotifications(e echo.Context) error {
 	if ok, err := loginRequired(e, db, &loginRequiredOption{Team: true}); !ok {
 		return wrapError("check session", err)
 	}
-	time.Sleep(8 * time.Second)
+	time.Sleep(4 * time.Second)
 	return e.Blob(http.StatusOK, "application/vnd.google.protobuf", emptyNotificationPB)
 }
 
