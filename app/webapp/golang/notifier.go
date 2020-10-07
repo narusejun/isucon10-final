@@ -4,17 +4,19 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
+	"database/sql"
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
-	"github.com/golang/protobuf/proto"
 	"github.com/jmoiron/sqlx"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/isucon/isucon10-final/webapp/golang/proto/xsuportal/resources"
@@ -62,7 +64,15 @@ var (
 			ForceAttemptHTTP2: true,
 		},
 	}
+	contestantsCache = sync.Map{}
+	pushSubscriptionCache = sync.Map{}
+
 )
+
+func (n *Notifier) Reset() {
+	contestantsCache = sync.Map{}
+	pushSubscriptionCache = sync.Map{}
+}
 
 func (n *Notifier) VAPIDKey() *webpush.Options {
 	n.mu.Lock()
@@ -100,23 +110,39 @@ func (n *Notifier) NotifyClarificationAnswered(db sqlx.Ext, c *Clarification, up
 		TeamID int64  `db:"team_id"`
 	}
 	if c.Disclosed.Valid && c.Disclosed.Bool {
-		err := sqlx.Select(
-			db,
-			&contestants,
-			"SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` IS NOT NULL",
-		)
-		if err != nil {
-			return fmt.Errorf("select all contestants: %w", err)
+		if val, ok := contestantsCache.Load(0); ok {
+			contestants = val.([]struct{
+				ID     string `db:"id"`
+				TeamID int64  `db:"team_id"`
+			})
+		} else {
+			err := sqlx.Select(
+				db,
+				&contestants,
+				"SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` IS NOT NULL",
+			)
+			if err != nil {
+				return fmt.Errorf("select all contestants: %w", err)
+			}
+			contestantsCache.Store(0, contestants)
 		}
 	} else {
-		err := sqlx.Select(
-			db,
-			&contestants,
-			"SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?",
-			c.TeamID,
-		)
-		if err != nil {
-			return fmt.Errorf("select contestants(team_id=%v): %w", c.TeamID, err)
+		if val, ok := contestantsCache.Load(c.TeamID); ok {
+			contestants = val.([]struct{
+				ID     string `db:"id"`
+				TeamID int64  `db:"team_id"`
+			})
+		} else {
+			err := sqlx.Select(
+				db,
+				&contestants,
+				"SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?",
+				c.TeamID,
+			)
+			if err != nil {
+				return fmt.Errorf("select contestants(team_id=%v): %w", c.TeamID, err)
+			}		
+			contestantsCache.Store(c.TeamID, contestants)
 		}
 	}
 	for _, contestant := range contestants {
@@ -129,10 +155,7 @@ func (n *Notifier) NotifyClarificationAnswered(db sqlx.Ext, c *Clarification, up
 				},
 			},
 		}
-		// notification, err := n.notify(db, notificationPB, contestant.ID)
-		// if err != nil {
-		// 	return fmt.Errorf("notify: %w", err)
-		// }
+
 		if n.VAPIDKey() != nil {
 			notificationPB.Id = c.ID + 1000000
 			notificationPB.CreatedAt = timestamppb.New(time.Now())
@@ -151,15 +174,25 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 		ID     string `db:"id"`
 		TeamID int64  `db:"team_id"`
 	}
-	err := sqlx.Select(
-		db,
-		&contestants,
-		"SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?",
-		job.TeamID,
-	)
-	if err != nil {
-		return fmt.Errorf("select contestants(team_id=%v): %w", job.TeamID, err)
+
+	if val, ok := contestantsCache.Load(job.TeamID); ok {
+		contestants = val.([]struct{
+			ID     string `db:"id"`
+			TeamID int64  `db:"team_id"`
+		})
+	} else {
+		err := sqlx.Select(
+			db,
+			&contestants,
+			"SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?",
+			job.TeamID,
+		)
+		if err != nil {
+			return fmt.Errorf("select contestants(team_id=%v): %w", job.TeamID, err)
+		}		
+		contestantsCache.Store(job.TeamID, contestants)
 	}
+
 	for _, contestant := range contestants {
 		notificationPB := &resources.Notification{
 			Content: &resources.Notification_ContentBenchmarkJob{
@@ -168,10 +201,7 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 				},
 			},
 		}
-		// notification, err := n.notify(db, notificationPB, contestant.ID)
-		// if err != nil {
-		// 	return fmt.Errorf("notify: %w", err)
-		// }
+
 		if n.VAPIDKey() != nil {
 			notificationPB.Id = job.ID
 			notificationPB.CreatedAt = timestamppb.New(time.Now())
@@ -185,31 +215,94 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 	return nil
 }
 
-func (n *Notifier) notify(db sqlx.Ext, notificationPB *resources.Notification, contestantID string) (*Notification, error) {
-	m, err := proto.Marshal(notificationPB)
+func GetVAPIDKey(path string) (*ecdsa.PrivateKey, error) {
+	pemBytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("marshal notification: %w", err)
+		return nil, fmt.Errorf("read pem: %w", err)
 	}
-	encodedMessage := base64.StdEncoding.EncodeToString(m)
-	res, err := db.Exec(
-		"INSERT INTO `notifications` (`contestant_id`, `encoded_message`, `read`, `created_at`, `updated_at`) VALUES (?, ?, FALSE, NOW(6), NOW(6))",
-		contestantID,
-		encodedMessage,
+	for {
+		block, rest := pem.Decode(pemBytes)
+		pemBytes = rest
+		if block == nil {
+			break
+		}
+		ecPrivateKey, err := x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			continue
+		}
+		return ecPrivateKey, nil
+	}
+	return nil, fmt.Errorf("not found ec private key")
+}
+
+func MakeTestNotificationPB() *resources.Notification {
+	return &resources.Notification{
+		CreatedAt: timestamppb.New(time.Now().UTC()),
+		Content: &resources.Notification_ContentTest{
+			ContentTest: &resources.Notification_TestMessage{
+				Something: rand.Int63n(10000),
+			},
+		},
+	}
+}
+
+func GetPushSubscriptions(db sqlx.Queryer, contestantID string) ([]PushSubscription, error) {
+	var subscriptions []PushSubscription
+	if val, ok := pushSubscriptionCache.Load(contestantID); ok {
+		subscriptions = val.([]PushSubscription)
+	} else {
+		err := sqlx.Select(
+			db,
+			&subscriptions,
+			"SELECT * FROM `push_subscriptions` WHERE `contestant_id` = ?",
+			contestantID,
+		)
+		if err != sql.ErrNoRows && err != nil {
+			return nil, fmt.Errorf("select push subscriptions: %w", err)
+		}
+		pushSubscriptionCache.Store(contestantID, subscriptions)
+	}
+	return subscriptions, nil
+}
+
+func SendWebPush(vapidKey *ecdsa.PrivateKey, notificationPB *resources.Notification, pushSubscription *PushSubscription) error {
+	b, err := proto.Marshal(notificationPB)
+	if err != nil {
+		return fmt.Errorf("marshal notification: %w", err)
+	}
+	message := make([]byte, base64.StdEncoding.EncodedLen(len(b)))
+	base64.StdEncoding.Encode(message, b)
+
+	vapidPrivateKey := base64.RawURLEncoding.EncodeToString(vapidKey.D.Bytes())
+	vapidPublicKey := base64.RawURLEncoding.EncodeToString(elliptic.Marshal(vapidKey.Curve, vapidKey.X, vapidKey.Y))
+
+	resp, err := webpush.SendNotification(
+		message,
+		&webpush.Subscription{
+			Endpoint: pushSubscription.Endpoint,
+			Keys: webpush.Keys{
+				Auth:   pushSubscription.Auth,
+				P256dh: pushSubscription.P256DH,
+			},
+		},
+		&webpush.Options{
+			Subscriber:      WebpushSubject,
+			VAPIDPublicKey:  vapidPublicKey,
+			VAPIDPrivateKey: vapidPrivateKey,
+			HTTPClient: &client,
+		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("insert notification: %w", err)
+		return fmt.Errorf("send notification: %w", err)
 	}
-	lastInsertID, _ := res.LastInsertId()
-	var notification Notification
-	err = sqlx.Get(
-		db,
-		&notification,
-		"SELECT * FROM `notifications` WHERE `id` = ? LIMIT 1",
-		lastInsertID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("get inserted notification: %w", err)
+	defer resp.Body.Close()
+	expired := resp.StatusCode == 410
+	if expired {
+		return fmt.Errorf("expired notification")
 	}
-	// }
-	return &notification, nil
+	invalid := resp.StatusCode == 404
+	if invalid {
+		return fmt.Errorf("invalid notification")
+	}
+	return nil
 }

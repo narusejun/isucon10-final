@@ -316,6 +316,14 @@ func main() {
 		MinIdleConns: 128,
 	})
 
+	go func() {
+		var notifier xsuportal.Notifier
+		for {
+			rdb.BLPop(context.Background(), 0, "reset").Result()
+			notifier.Reset()
+		}
+	}()
+
 	server := grpc.NewServer()
 
 	queue := &benchmarkQueueService{}

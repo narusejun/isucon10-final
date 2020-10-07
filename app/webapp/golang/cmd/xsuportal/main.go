@@ -252,6 +252,9 @@ func (*AdminService) Initialize(e echo.Context) error {
 	currentTeamCache = sync.Map{}
 	contestStatusCache = sync.Map{}
 
+	notifier.Reset()
+	rdb.RPush(context.Background(), "reset", "reset")
+
 	return writeProto(e, http.StatusOK, res)
 }
 
@@ -1177,7 +1180,7 @@ func (*AudienceService) ListTeams(e echo.Context) error {
 var leaderboardCache = sync.Map{}
 
 func leaderboardCacheBuilder() {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(800 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
