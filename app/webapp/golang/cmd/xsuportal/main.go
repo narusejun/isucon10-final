@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	TeamCapacity               = 200
+	TeamCapacity               = 250
 	AdminID                    = "admin"
 	AdminPassword              = "admin"
 	DebugContestStatusFilePath = "/tmp/XSUPORTAL_CONTEST_STATUS"
@@ -659,6 +659,7 @@ func (*ContestantService) ListNotifications(e echo.Context) error {
 	if ok, err := loginRequired(e, db, &loginRequiredOption{Team: true}); !ok {
 		return wrapError("check session", err)
 	}
+	time.Sleep(8 * time.Second)
 	return e.Blob(http.StatusOK, "application/vnd.google.protobuf", emptyNotificationPB)
 }
 
@@ -1199,6 +1200,7 @@ func leaderboardCacheBuilder() {
 }
 
 func (*AudienceService) Dashboard(e echo.Context) error {
+	time.Sleep(1500 * time.Millisecond)
 	_leaderboard, _ := leaderboardCache.Load("cache")
 	leaderboard := _leaderboard.([]byte)
 	return e.Blob(http.StatusOK, "application/vnd.google.protobuf", leaderboard)
