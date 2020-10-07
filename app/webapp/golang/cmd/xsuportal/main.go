@@ -143,6 +143,18 @@ func main() {
 		Notifications: []*resourcespb.Notification{},
 	})
 
+	if util.GetEnv("SUB", "0") == "1" {
+		go func() {
+			for {
+				rdb.BLPop(context.Background(), 0, "reset2").Result()
+				notifier.Reset()
+				currentContestantCache = sync.Map{}
+				currentTeamCache = sync.Map{}
+				contestStatusCache = sync.Map{}
+			}
+		}()
+	}
+
 	if util.GetEnv("WEB_USE_UNIX_SOCKET_DOMAIN", "0") == "1" {
 		// ここからソケット接続設定 ---
 		socket_file := "/var/run/web.sock"
@@ -254,6 +266,8 @@ func (*AdminService) Initialize(e echo.Context) error {
 
 	notifier.Reset()
 	rdb.RPush(context.Background(), "reset", "reset")
+	rdb.RPush(context.Background(), "reset2", "reset")
+	time.Sleep(1 * time.Second)
 
 	return writeProto(e, http.StatusOK, res)
 }
