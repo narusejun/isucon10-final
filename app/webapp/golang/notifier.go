@@ -8,7 +8,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -135,7 +134,7 @@ func (n *Notifier) NotifyClarificationAnswered(db sqlx.Ext, c *Clarification, up
 		// 	return fmt.Errorf("notify: %w", err)
 		// }
 		if n.VAPIDKey() != nil {
-			notificationPB.Id = rand.Int63()
+			notificationPB.Id = c.ID + 1000000
 			notificationPB.CreatedAt = timestamppb.New(time.Now())
 			go func() {
 				if err := webPush(db, notificationPB, contestant.ID); err != nil {
@@ -174,7 +173,7 @@ func (n *Notifier) NotifyBenchmarkJobFinished(db sqlx.Ext, job *BenchmarkJob) er
 		// 	return fmt.Errorf("notify: %w", err)
 		// }
 		if n.VAPIDKey() != nil {
-			notificationPB.Id = rand.Int63()
+			notificationPB.Id = job.ID
 			notificationPB.CreatedAt = timestamppb.New(time.Now())
 			go func() {
 				if err := webPush(db, notificationPB, contestant.ID); err != nil {
