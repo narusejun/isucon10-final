@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	TeamCapacity               = 128
+	TeamCapacity               = 256
 	AdminID                    = "admin"
 	AdminPassword              = "admin"
 	DebugContestStatusFilePath = "/tmp/XSUPORTAL_CONTEST_STATUS"
@@ -139,6 +139,10 @@ func main() {
 
 	go leaderboardCacheBuilder()
 
+	emptyNotificationPB, _ = proto.Marshal(&contestantpb.ListNotificationsResponse{
+		Notifications: []*resourcespb.Notification{},
+	})
+
 	if util.GetEnv("WEB_USE_UNIX_SOCKET_DOMAIN", "0") == "1" {
 		// ここからソケット接続設定 ---
 		socket_file := "/var/run/web.sock"
@@ -161,8 +165,10 @@ func main() {
 	} else {
 		srv.Logger.Error(srv.StartServer(srv.Server))
 	}
-
 }
+
+var emptyNotificationPB []byte
+
 
 type ProtoBinder struct{}
 
@@ -244,7 +250,7 @@ func (*AdminService) Initialize(e echo.Context) error {
 	}
 	currentContestantCache = sync.Map{}
 	currentTeamCache = sync.Map{}
-	contestStatus = xsuportal.ContestStatus{}
+	contestStatusCache = sync.Map{}
 
 	return writeProto(e, http.StatusOK, res)
 }
@@ -650,14 +656,7 @@ func (*ContestantService) ListNotifications(e echo.Context) error {
 	if ok, err := loginRequired(e, db, &loginRequiredOption{Team: true}); !ok {
 		return wrapError("check session", err)
 	}
-	var notifications []*xsuportal.Notification
-	ns, err := makeNotificationsPB(notifications)
-	if err != nil {
-		return fmt.Errorf("make notifications: %w", err)
-	}
-	return writeProto(e, http.StatusOK, &contestantpb.ListNotificationsResponse{
-		Notifications:               ns,
-	})
+	return e.Blob(http.StatusOK, "application/vnd.google.protobuf", emptyNotificationPB)
 }
 
 func (*ContestantService) SubscribeNotification(e echo.Context) error {
@@ -1314,9 +1313,13 @@ func getCurrentTeam(e echo.Context, db sqlx.Queryer, lock bool) (*xsuportal.Team
 	return &team, nil
 }
 
-var contestStatus = xsuportal.ContestStatus{}
+var contestStatusCache = sync.Map{}
 
 func getCurrentContestStatus(qdb sqlx.Queryer) (xsuportal.ContestStatus, error) {
+	var contestStatus = xsuportal.ContestStatus{}
+	if val, ok := contestStatusCache.Load("cache"); ok {
+		contestStatus = val.(xsuportal.ContestStatus)
+	}
 	lastStatus := contestStatus.Status
 	statusStr := ""
 	if contestStatus.StatusStr != "" {
@@ -1374,7 +1377,9 @@ func getCurrentContestStatus(qdb sqlx.Queryer) (xsuportal.ContestStatus, error) 
 			return contestStatus, err
 		}
 	}
-
+	if lastStatus != contestStatus.Status {
+		contestStatusCache.Store("cache", contestStatus)
+	}
 	return contestStatus, nil
 }
 
