@@ -137,13 +137,12 @@ func main() {
 	srv.POST("/api/login", contestant.Login)
 	srv.POST("/api/logout", contestant.Logout)
 
-	go leaderboardCacheBuilder()
-
 	emptyNotificationPB, _ = proto.Marshal(&contestantpb.ListNotificationsResponse{
 		Notifications: []*resourcespb.Notification{},
 	})
 
 	if util.GetEnv("SUB", "0") == "1" {
+		go leaderboardCacheBuilder()
 		go func() {
 			for {
 				rdb.BLPop(context.Background(), 0, "reset2").Result()
