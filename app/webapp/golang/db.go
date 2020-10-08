@@ -17,6 +17,7 @@ func GetDB() (*sqlx.DB, error) {
 	mysqlConfig.Params = map[string]string{
 		"time_zone": "'+00:00'",
 	}
+	mysqlConfig.InterpolateParams = true
 	mysqlConfig.ParseTime = true
 
 	return sqlx.Open("mysql", mysqlConfig.FormatDSN())
