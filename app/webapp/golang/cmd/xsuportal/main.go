@@ -150,6 +150,8 @@ func main() {
 				currentContestantCache = sync.Map{}
 				currentTeamCache = sync.Map{}
 				contestStatusCache = sync.Map{}
+				generalCache = sync.Map{}
+				teamPBCache = sync.Map{}
 			}
 		}()
 	}
@@ -262,6 +264,8 @@ func (*AdminService) Initialize(e echo.Context) error {
 	currentContestantCache = sync.Map{}
 	currentTeamCache = sync.Map{}
 	contestStatusCache = sync.Map{}
+	generalCache = sync.Map{}
+	teamPBCache = sync.Map{}
 
 	notifier.Reset()
 	rdb.RPush(context.Background(), "reset", "reset")
@@ -1403,11 +1407,28 @@ func getCurrentContestStatus(qdb sqlx.Queryer) (xsuportal.ContestStatus, error) 
 		if err := tx.Commit(); err != nil {
 			return contestStatus, err
 		}
+		go createStartedCaches()
 	}
 	if lastStatus != contestStatus.Status {
 		contestStatusCache.Store("cache", contestStatus)
 	}
 	return contestStatus, nil
+}
+
+func createStartedCaches() {
+	var teams []xsuportal.Team
+	if err := db.Select(&teams, "SELECT * FROM `teams`"); err != nil {
+		fmt.Printf("createStartedCaches select teams err: %+v", err)
+	}
+
+	for _, team := range teams {
+		teamPB, err := makeTeamPB(db, &team, true, true)
+		if err != nil {
+			fmt.Printf("createStartedCaches makeTeamPB err: %+v", err)
+		}
+
+		teamPBCache.Store(team.ID, teamPB)
+	}
 }
 
 type loginRequiredOption struct {
@@ -1493,6 +1514,8 @@ func makeClarificationPBWithTeam(c *xsuportal.Clarification, t *resourcespb.Team
 	return pb
 }
 
+var teamPBCache = sync.Map{}
+
 func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers bool) (*resourcespb.Team, error) {
 	pb := &resourcespb.Team{
 		Id:        t.ID,
@@ -1507,6 +1530,19 @@ func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers b
 		}
 	}
 	if enableMembers {
+		if val, ok := teamPBCache.Load(t.ID); ok {
+			pb = val.(*resourcespb.Team)
+			if !detail {
+				pb.Detail = nil
+			}
+
+			if !t.LeaderID.Valid {
+				pb.Leader = nil
+			}
+
+			return pb, nil
+		}
+
 		if t.LeaderID.Valid {
 			var leader xsuportal.Contestant
 			if err := sqlx.Get(db, &leader, "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1", t.LeaderID.String); err != nil {
