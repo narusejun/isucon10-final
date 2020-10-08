@@ -151,7 +151,9 @@ func main() {
 				currentTeamCache = sync.Map{}
 				contestStatusCache = sync.Map{}
 				generalCache = sync.Map{}
-				teamPBCache = sync.Map{}
+				teamContestantsCache = sync.Map{}
+				teamCache = sync.Map{}
+				contestantCache = sync.Map{}
 			}
 		}()
 	}
@@ -265,7 +267,9 @@ func (*AdminService) Initialize(e echo.Context) error {
 	currentTeamCache = sync.Map{}
 	contestStatusCache = sync.Map{}
 	generalCache = sync.Map{}
-	teamPBCache = sync.Map{}
+	teamContestantsCache = sync.Map{}
+	teamCache = sync.Map{}
+	contestantCache = sync.Map{}
 
 	notifier.Reset()
 	rdb.RPush(context.Background(), "reset", "reset")
@@ -1416,18 +1420,23 @@ func getCurrentContestStatus(qdb sqlx.Queryer) (xsuportal.ContestStatus, error) 
 }
 
 func createStartedCaches() {
+	time.Sleep(1 * time.Second)
 	var teams []xsuportal.Team
 	if err := db.Select(&teams, "SELECT * FROM `teams`"); err != nil {
 		fmt.Printf("createStartedCaches select teams err: %+v", err)
 	}
 
 	for _, team := range teams {
-		teamPB, err := makeTeamPB(db, &team, true, true)
-		if err != nil {
-			fmt.Printf("createStartedCaches makeTeamPB err: %+v", err)
+		var members []xsuportal.Contestant
+		if err := db.Select(&members, "SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`", team.ID); err != nil {
+			fmt.Printf("createStartedCaches select team members err: %+v", err)
 		}
 
-		teamPBCache.Store(team.ID, teamPB)
+		teamContestantsCache.Store(team.ID, members)
+		teamCache.Store(team.ID, team)
+		for _, member := range members {
+			contestantCache.Store(member.ID, member)
+		}
 	}
 }
 
@@ -1514,7 +1523,9 @@ func makeClarificationPBWithTeam(c *xsuportal.Clarification, t *resourcespb.Team
 	return pb
 }
 
-var teamPBCache = sync.Map{}
+var teamContestantsCache = sync.Map{}
+var teamCache = sync.Map{}
+var contestantCache = sync.Map{}
 
 func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers bool) (*resourcespb.Team, error) {
 	pb := &resourcespb.Team{
@@ -1530,29 +1541,24 @@ func makeTeamPB(db sqlx.Queryer, t *xsuportal.Team, detail bool, enableMembers b
 		}
 	}
 	if enableMembers {
-		if val, ok := teamPBCache.Load(t.ID); ok {
-			pb = val.(*resourcespb.Team)
-			if !detail {
-				pb.Detail = nil
-			}
-
-			if !t.LeaderID.Valid {
-				pb.Leader = nil
-			}
-
-			return pb, nil
-		}
-
 		if t.LeaderID.Valid {
 			var leader xsuportal.Contestant
-			if err := sqlx.Get(db, &leader, "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1", t.LeaderID.String); err != nil {
-				return nil, fmt.Errorf("get leader: %w", err)
+			if val, ok := contestantCache.Load(t.LeaderID.String); ok {
+				leader = val.(xsuportal.Contestant)
+			} else {
+				if err := sqlx.Get(db, &leader, "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1", t.LeaderID.String); err != nil {
+					return nil, fmt.Errorf("get leader: %w", err)
+				}
 			}
 			pb.Leader = makeContestantPB(&leader)
 		}
 		var members []xsuportal.Contestant
-		if err := sqlx.Select(db, &members, "SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`", t.ID); err != nil {
-			return nil, fmt.Errorf("select members: %w", err)
+		if val, ok := teamContestantsCache.Load(t.ID); ok {
+			members = val.([]xsuportal.Contestant)
+		} else {
+			if err := sqlx.Select(db, &members, "SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`", t.ID); err != nil {
+				return nil, fmt.Errorf("select members: %w", err)
+			}
 		}
 		for _, member := range members {
 			pb.Members = append(pb.Members, makeContestantPB(&member))
