@@ -1158,7 +1158,12 @@ func (*RegistrationService) DeleteRegistration(e echo.Context) error {
 
 type AudienceService struct{}
 
+var generalCache = sync.Map{}
 func (*AudienceService) ListTeams(e echo.Context) error {
+	if val, ok := generalCache.Load("audience_ListTeams"); ok {
+		return e.Blob(http.StatusOK, "application/vnd.google.protobuf", val.([]byte))
+	}
+
 	var teams []xsuportal.Team
 	err := db.Select(&teams, "SELECT * FROM `teams` WHERE `withdrawn` = FALSE ORDER BY `created_at` DESC")
 	if err != nil {
@@ -1187,6 +1192,10 @@ func (*AudienceService) ListTeams(e echo.Context) error {
 			MemberNames: memberNames,
 			IsStudent:   isStudent,
 		})
+	}
+	if status, _ := getCurrentContestStatus(db); status.Status == resourcespb.Contest_STARTED {
+		b, _ := proto.Marshal(res)
+		generalCache.Store("audience_ListTeams", b)
 	}
 	return writeProto(e, http.StatusOK, res)
 }
